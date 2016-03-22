@@ -1,11 +1,15 @@
 package util
 
-import "encoding/binary"
-
+// Comparator is an interface used to compare values
 type Comparator interface {
+  // Compare two values of the Same Type
   Compare(a, b interface{}) int
+  
+  // Return the shortest data between a and b
+  FindShortestSep(a, b interface{}) interface{}
 }
 
+// BinaryCompare is a function compare two bytes array
 func BinaryCompare(first, second []byte) int {
   var clen int
   if len(first) > len(second) {
@@ -36,6 +40,7 @@ func BinaryCompare(first, second []byte) int {
 type binaryCmp struct {
 }
 
+// BinaryComparator is an binary comparator instance
 var BinaryComparator binaryCmp
 
 
@@ -43,34 +48,25 @@ func (binary binaryCmp) Compare(a, b interface{}) int {
   return BinaryCompare(a.([]byte), b.([]byte))
 }
 
-
-type InternalKeyComparator struct {
-
-}
-
-func NewInternalKeyComparator() Comparator {
-  return new(InternalKeyComparator)
-}
-
-func (i *InternalKeyComparator) Compare(a, b interface{}) int {
-  val1 := a.([]byte)
-  val2 := b.([]byte)
-  split1 := len(val1) - 8
-  split2 := len(val2) - 8
-  cmp := BinaryCompare(val1[:split1], val2[:split2])
-  if cmp != 0 {
-    return cmp
+func (binary binaryCmp) FindShortestSep(val1, val2 interface{}) interface{} {
+  var minLen int
+  key1, key2 := val1.([]byte), val2.([]byte)
+  if len(key1) > len(key2) {
+    minLen = len(key2)
+  } else {
+    minLen = len(key1)
   }
 
-  seq1 := binary.LittleEndian.Uint64(val1[split1:])
-  seq2 := binary.LittleEndian.Uint64(val2[split2:])
-
-  switch true {
-  case seq2 > seq1 :
-    return 1
-  case seq1 == seq2:
-    return 0
-  default:
-    return -1
+  var pos int
+  for pos = 0; pos < minLen; pos++ {
+    if key1[pos] + 1 >= key2[pos] {
+      continue
+    }
   }
+
+  if pos < minLen {
+    key1[pos]++
+    return key1[:pos + 1]
+  }
+  return key1
 }

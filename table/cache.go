@@ -105,6 +105,12 @@ func (c *cacheImpl) Get(option *util.ReadOption, num, fileSize int, key []byte) 
 func (c *cacheImpl) Evict(num int) {
   current := c.head.Next()
   for current != c.head {
-    n := c.Value.(int)
+    n := current.Value.(int)
+    if n == num {
+        current.Prev().Unlink(1)
+    }
+    current = current.Next()
   }
+  delete(c.cache, num)
+  c.size--
 }

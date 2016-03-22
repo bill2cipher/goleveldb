@@ -1,13 +1,17 @@
 package util
 
+// Config defines settings for database
 type Config struct {
-  kL0_StopWritesTrigger int
-  Max_Level int
+  L0StopWritesTrigger int
+  MaxLevel int
+  MaxSeq uint64
 }
 
+// Global defines default db settings
 var Global Config
 
 func init() {
-  Global.kL0_StopWritesTrigger = 1024 * 1024 * 4
-  Global.Max_Level = 7
+  Global.L0StopWritesTrigger = 1024 * 1024 * 4
+  Global.MaxLevel = 7
+  Global.MaxSeq = 0x1 << 56 - 1
 }

@@ -130,28 +130,12 @@ func GetBytesLen(data []byte) []byte {
   return store
 }
 
-func FindShortestSep(key1, key2 []byte) []byte {
-  var minLen int
-  if len(key1) > len(key2) {
-    minLen = len(key2)
-  } else {
-    minLen = len(key1)
-  }
-
-  var pos int
-  for pos = 0; pos < minLen; pos++ {
-    if key1[pos] + 1 >= key2[pos] {
-      continue
-    }
-  }
-
-  if pos < minLen {
-    key1[pos] += 1
-    return key1[:pos + 1]
-  }
-  return key1
-}
-
 func PackSeqAndType(seq uint64, rtype byte) uint64 {
   return seq << 8 | (uint64(rtype) & 0xFF)
+}
+
+// ExtractUserKey extracts user key from internal key
+func ExtractUserKey(ikey []byte) []byte {
+  clen := len(ikey)
+  return ikey[:clen - 8]
 }

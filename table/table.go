@@ -210,7 +210,7 @@ func (t *tableBuilderImpl) Add(key, value []byte) error {
 }
 
 func (t *tableBuilderImpl) addBlock(successor []byte) error {
-  sep := util.FindShortestSep(t.lastKey, successor)
+  sep := t.option.Comparator.FindShortestSep(t.lastKey, successor).([]byte)
   block := t.blockBuilder.Finish()
   t.blockBuilder.Reset()
 
@@ -271,7 +271,10 @@ type Table interface {
   // bytes, and so includes effects like compression of the underlying data.
   // E.g., the approximate offset of the last key in the table will
   // be close to the file length.
-  ApproximateOffsetOf(key []byte) uint32
+  ApproximateOffsetOf(key []byte) int
+  
+  // Get the given key/value pair from table if there's any
+  Get(key []byte) ([]byte, []byte)
 }
 
 type tableImpl struct {
@@ -284,7 +287,7 @@ type tableImpl struct {
   option    *util.Option
 }
 
-// Attempt to open the table that is stored in bytes [0..file_size)
+// OpenTable attempt to open the table that is stored in bytes [0..file_size)
 // of "file", and read the metadata entries necessary to allow
 // retrieving data from the table.
 //
@@ -317,6 +320,26 @@ func (t *tableImpl) init(filename string, filesize int, option *util.Option) err
 
 func (t *tableImpl) Close() {
   t.file.Close()
+}
+
+func (t *tableImpl) Get(key []byte) ([]byte, []byte) {
+  iiter := t.index.NewIterator(util.BinaryComparator)
+  iiter.Seek(key)
+  if !iiter.Valid() {
+    return nil, nil
+  }
+  handler := DecodeHandler(iiter.Value().([]byte))
+  if t.filter != nil && !t.filter.KeyMayMatch(uint32(handler.offset), key) {
+    return nil, nil
+  }
+  
+  if biter := t.NewBlockIterator(iiter.Value()); biter == nil {
+    return nil, nil
+  } else if biter.Seek(key); !biter.Valid() {
+    return nil, nil
+  } else {
+    return biter.Key().([]byte), biter.Value().([]byte)
+  }
 }
 
 func (t *tableImpl) parseTable() error {
@@ -414,24 +437,29 @@ func (t *tableImpl) readContent(offset, size int) ([]byte, error) {
 
 
 func (t *tableImpl) NewIterator() mem.Iterator {
-  indexIter := t.index.NewIterator(util.BinaryComparator)
+  indexIter := t.index.NewIterator(t.option.Comparator)
   return NewTwoLevelIterator(indexIter, t.NewBlockIterator, util.DefaultReadOption,
       util.BinaryComparator)
 }
 
-func (t *tableImpl) ApproximateOffsetOf(key []byte) uint32 {
-  return 0
+func (t *tableImpl) ApproximateOffsetOf(key []byte) int {
+  iter := t.index.NewIterator(t.option.Comparator)
+  iter.Seek(key)
+  if !iter.Valid() {
+    return t.filesize
+  }
+  
+  handler := DecodeHandler(iter.Value().([]byte))
+  return handler.offset
 }
 
 func (t *tableImpl) NewBlockIterator(value interface{}) mem.Iterator {
   handler := DecodeHandler(value.([]byte))
   if content, err := t.readContent(handler.offset, handler.size); err != nil {
     return nil
+  } else if block := NewBlock(content); block == nil {
+    return nil
   } else {
-    if block := NewBlock(content); block == nil {
-      return nil
-    } else {
       return block.NewIterator(t.option.Comparator)
-    }
   }
 }

@@ -10,7 +10,7 @@ import (
 )
 
 
-
+// NewMemtable create a new memtable for use
 func NewMemtable(cmp util.Comparator) Memtable {
   table := new(memImpl)
   table.init(cmp)
@@ -25,7 +25,7 @@ type memImpl struct {
 
 func (m *memImpl) init(cmp util.Comparator) {
   m.cmp = cmp
-  m.list = NewSkiplist(m)
+  m.list = NewSkiplist(NewMemtableKeyComparator(cmp))
   m.written = 0
 }
 
@@ -58,7 +58,7 @@ func (m *memImpl) Add(seq uint64, rtype byte, key, value []byte) {
   buffer.Write(lenBuf[:4])
   buffer.Write(value)
 
-  var node []byte = buffer.Bytes()
+  node := buffer.Bytes()
   m.list.Insert(node)
   m.written += len(node)
 }
@@ -91,12 +91,6 @@ func (m *memImpl) Get(key util.LookupKey) []byte {
   return nil
 }
 
-func (m *memImpl) Compare(a, b interface{}) int {
-  a1, b1 := a.([]byte), b.([]byte)
-  val1, _ := util.GetLenPrefixBytes(a1)
-  val2, _ := util.GetLenPrefixBytes(b1)
-  return m.cmp.Compare(val1, val2)
-} 
 
 func (m *memImpl) DumpData() []MemEntry {
   iter := m.NewIterator()
@@ -174,3 +168,4 @@ func (i *memIterator) SeekToFirst() {
 func (i *memIterator) SeekToLast() {
   i.iter.SeekToLast()
 }
+
