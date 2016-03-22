@@ -7,8 +7,8 @@ import (
 )
 
 import (
-  "github.com/goleveldb/mem"
-  "github.com/goleveldb/util"
+  "github.com/jellybean4/goleveldb/mem"
+  "github.com/jellybean4/goleveldb/util"
 )
 
 func PrintBatch(t *testing.T, batch WriteBatch) []byte {

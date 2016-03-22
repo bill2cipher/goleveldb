@@ -121,7 +121,7 @@ func PutLenPrefixBytes(buffer *bytes.Buffer, store, data []byte) {
   slen := uint32(len(data))
   binary.LittleEndian.PutUint32(store, slen)
   buffer.Write(store[:4])
-  buffer.Write(data)  
+  buffer.Write(data)
 }
 
 func GetBytesLen(data []byte) []byte {

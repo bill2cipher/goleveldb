@@ -1,8 +1,8 @@
 package table
 
 import (
-	"github.com/goleveldb/util"
-  "github.com/goleveldb/mem"
+	"github.com/jellybean4/goleveldb/util"
+  "github.com/jellybean4/goleveldb/mem"
 )
 
 type mergeIterator struct {

@@ -6,7 +6,7 @@ import (
 )
 
 import (
-  "github.com/goleveldb/util"
+  "github.com/jellybean4/goleveldb/util"
 )
 
 func NewSkiplist(cmp util.Comparator) Skiplist {

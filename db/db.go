@@ -5,9 +5,9 @@ import (
 )
 
 import (
-  "github.com/goleveldb/util"
-  "github.com/goleveldb/mem"
-  "github.com/goleveldb/compact"
+  "github.com/jellybean4/goleveldb/util"
+  "github.com/jellybean4/goleveldb/mem"
+  "github.com/jellybean4/goleveldb/compact"
 )
 
 type DB interface {

@@ -3,11 +3,12 @@ package version
 import (
   "errors"
   "bytes"
+  "fmt"
   "encoding/binary"
 )
 
 import (
-  "github.com/goleveldb/util"
+  "github.com/jellybean4/goleveldb/util"
 )
 
 
@@ -17,21 +18,35 @@ type VersionEdit interface {
   
   SetComparatorName(name string)
   
+  GetComparatorName() string
+  
   SetLogNumber(num int)
+  
+  GetLogNumber() int
   
   SetNextFile(num int)
   
+  GetNextFile() int
+  
   SetLastSequence(seq uint64)
   
+  GetLastSequence() uint64
+  
   SetCompactPointer(level int, key *util.InternalKey)
+  
+  GetCompactPointer(level int) []*util.InternalKey
 
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file 
-  AddFile(level, file, file_size int, smallest, largest util.InternalKey)
+  AddFile(level, file, file_size int, smallest, largest *util.InternalKey)
+  
+  GetFile(level int) []*FileMetaData
   
   // Delete the specified "file" from the specified "level"
   DeleteFile(level int, file int)
+  
+  GetDeletedFile(level int) []int
   
   Encode() []byte
   
@@ -41,7 +56,7 @@ type VersionEdit interface {
 func NewVersionEdit() VersionEdit {
   edit := new(editImpl)
   edit.init()
-  return edit  
+  return edit
 }
 
 type entry struct {
@@ -87,36 +102,85 @@ func (e *editImpl) SetComparatorName(name string) {
   e.cmpName = []byte(name)
 }
 
+func (e *editImpl) GetComparatorName() string {
+  return string(e.cmpName)
+}
+
 func (e *editImpl) SetLogNumber(num int) {
   e.logNumber = num
+}
+
+func (e *editImpl) GetLogNumber() int {
+  return e.logNumber
 }
 
 func (e *editImpl) SetNextFile(num int) {
   e.fileNumber = num
 }
 
+func (e *editImpl) GetNextFile() int {
+  return e.fileNumber
+}
+
 func (e *editImpl) SetLastSequence(seq uint64) {
   e.sequence = seq
+}
+
+func (e *editImpl) GetLastSequence() uint64 {
+  return e.sequence
 }
 
 func (e *editImpl) SetCompactPointer(level int, key *util.InternalKey) {
   e.pointers = append(e.pointers, &entry{level, key})
 }
 
-func (e *editImpl) AddFile(level, file, filesize int, smallest, largest util.InternalKey) {
+func (e *editImpl) GetCompactPointer(level int) []*util.InternalKey {
+  var rslt []*util.InternalKey
+  for _, e := range e.pointers {
+    if e.level != level {
+      continue
+    }
+    rslt = append(rslt, e.value.(*util.InternalKey))
+  }
+  return rslt
+}
+
+func (e *editImpl) AddFile(level, file, filesize int, smallest, largest *util.InternalKey) {
   meta := &FileMetaData {
     AllowSeek : 0,
     Number    : file,
     FileSize  : filesize,
-    Smallest  : smallest,
-    Largest   : largest,
+    Smallest  : *smallest,
+    Largest   : *largest,
   }
   e.files = append(e.files, &entry{level, meta})
+}
+
+func (e *editImpl) GetFile(level int) []*FileMetaData {
+  var rslt []*FileMetaData
+  for _, e := range e.files {
+    if e.level != level {
+      continue
+    }
+    rslt = append(rslt, e.value.(*FileMetaData))
+  }
+  return rslt
 }
 
 func (e *editImpl) DeleteFile(level int, file int) {
   entry := &entry {level, file}
   e.deletes = append(e.deletes, entry)
+}
+
+func (e *editImpl) GetDeletedFile(level int) []int {
+  var rslt []int
+  for _, e := range e.deletes {
+    if e.level != level {
+      continue
+    }
+    rslt = append(rslt, e.value.(int))
+  }
+  return rslt
 }
 
 func (e *editImpl) Encode() []byte {
@@ -141,7 +205,8 @@ func (e *editImpl) Encode() []byte {
   }
   
   if e.sequence != 0 {
-    binary.LittleEndian.PutUint64(store, e.sequence) 
+    binary.LittleEndian.PutUint64(store, e.sequence)
+    buffer.WriteByte(typeSequence)
     buffer.Write(store)
   }
   
@@ -157,7 +222,7 @@ func (e *editImpl) Encode() []byte {
     buffer.Write(store[:4])
     
     binary.LittleEndian.PutUint32(store, uint32(meta.Number))
-    buffer.Write(store)
+    buffer.Write(store[:4])
     
     util.PutLenPrefixBytes(&buffer, store, meta.Smallest.Encode())
     util.PutLenPrefixBytes(&buffer, store, meta.Largest.Encode())
@@ -177,14 +242,17 @@ func (e *editImpl) Encode() []byte {
   // encode pointers
   for i := 0; i < len(e.pointers); i++ {
     buffer.WriteByte(typePointers)
+    binary.LittleEndian.PutUint32(store, uint32(e.pointers[i].level))
+    buffer.Write(store[:4])
     
     value := e.pointers[i].value.(*util.InternalKey)
     util.PutLenPrefixBytes(&buffer, store, value.Encode())
   }
-  return nil
+  return buffer.Bytes()
 }
 
 func (e *editImpl) Decode(data []byte) error {
+  var val []byte
   for len(data) > 0 {
     switch data[0] {
     case typeLogNumber:
@@ -195,11 +263,14 @@ func (e *editImpl) Decode(data []byte) error {
       data = data[5:]
     case typeCmpName:
       e.cmpName, data = util.GetLenPrefixBytes(data[1:])
-      data = data[len(e.cmpName) + 1 :]
+      if e.cmpName == nil || data == nil {
+        return errors.New("bad cmp name")
+      }
     case typeSequence:
       e.sequence = binary.LittleEndian.Uint64(data[1:])
       data = data[9:]
     case typeFiles:
+
       level := binary.LittleEndian.Uint32(data[1:])
       data = data[5:]
       meta := new(FileMetaData)
@@ -207,10 +278,16 @@ func (e *editImpl) Decode(data []byte) error {
       meta.FileSize = int(binary.LittleEndian.Uint32(data))
       meta.Number = int(binary.LittleEndian.Uint32(data[4:]))
       data = data[8:]
-      val, data := util.GetLenPrefixBytes(data)
+      val, data = util.GetLenPrefixBytes(data)
+      if val == nil || data == nil {
+        return errors.New("bad internal key")
+      }
       (&meta.Smallest).Decode(val)
       
       val, data = util.GetLenPrefixBytes(data)
+      if val == nil || data == nil {
+        return errors.New("bad internal key")
+      }
       (&meta.Largest).Decode(val)
       
       e.files = append(e.files, &entry{int(level), meta})
@@ -218,16 +295,21 @@ func (e *editImpl) Decode(data []byte) error {
       level := binary.LittleEndian.Uint32(data[1:])
       num   := binary.LittleEndian.Uint32(data[5:])
       e.deletes = append(e.deletes, &entry{int(level), int(num)})
-      
+      data = data[9:]
+
     case typePointers:
       level := binary.LittleEndian.Uint32(data[1:])
-      val, data := util.GetLenPrefixBytes(data[5:])
+      val, data = util.GetLenPrefixBytes(data[5:])
+      if val == nil || data == nil {
+        return errors.New("bad pointers key")
+      }
       intern := new(util.InternalKey)
       intern.Decode(val)
       e.pointers = append(e.pointers, &entry{int(level), intern})
       
     default:
-      return errors.New("bad edit format")
+      msg := fmt.Sprintf("bad edit type %d", data[0])
+      return errors.New(msg)
     }
   }
   return nil

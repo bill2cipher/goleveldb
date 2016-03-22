@@ -1,24 +1,13 @@
 package version
 
 import (
-  "bytes"
-  "errors"
-  "encoding/binary"
-)
-
-import (
-	"github.com/goleveldb/util"
-  "github.com/goleveldb/mem"
+	"github.com/jellybean4/goleveldb/util"
+  "github.com/jellybean4/goleveldb/mem"
+  "github.com/jellybean4/goleveldb/table"
 )
 
 
-type FileMetaData struct {
-  AllowSeek int
-  Number    int
-  FileSize  int
-  Smallest  util.InternalKey
-  Largest   util.InternalKey
-}
+
 
 type Handler func(args []interface{}, level int, meta *FileMetaData) bool
 
@@ -26,14 +15,14 @@ type Version interface {
   // Append to iters a sequence of iterators that will
   // yield the contents of this Version when merged together.
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
-  AddIterators(option *util.ReadOption, iters []mem.Iterator)
+  GetIterators(option *util.ReadOption) []mem.Iterator
 
   // Lookup the value for key.  If found, store it in *val and
   // return OK.  Else return a non-OK status.  Fills *stats.
   // REQUIRES: lock is not held 
   Get(option *util.ReadOption, key util.LookupKey) ([]byte, error)
   
-  GetOverlappingInputs(level int, begin, end *util.InternalKey, inputs []*FileMetaData)
+  GetOverlappingInputs(level int, begin, end *util.InternalKey) []*FileMetaData
   
   // Returns true iff some file in the specified level overlaps
   // some part of [*smallest_user_key,*largest_user_key].
@@ -69,3 +58,65 @@ type Version interface {
 func NewVersion(vset VersionSet) Version {
   return nil  
 }
+
+type versionImpl struct {
+  files [][]*FileMetaData
+  cscore float64    // compaction score
+  clevel int        // compaction level 
+  
+  slevel int           // seek compaction level
+  sfile  *FileMetaData // seek compaction file
+  
+  vset   VersionSet    // version set this version associated with
+  next   Version       // next version within the set
+  prev   Version       // prev version within the set
+}
+
+func (v *versionImpl) init() {
+  v.files = make([][]*FileMetaData, util.Global.Max_Level)
+  for i := 0; i < util.Global.Max_Level; i++ {
+    v.files[i] = []*FileMetaData{}
+  }
+}
+
+func (v *versionImpl) GetIterators(option *util.ReadOption) []mem.Iterator {
+  rslt := []mem.Iterator{}
+  level0 := v.files[0]
+  for i := 0; i < len(level0); i++ {
+    filename := util.TableFileName(v.vset.DBName(), uint64(level0[i].Number))
+    table := table.OpenTable(filename, level0[i].FileSize, v.vset.Option())
+  }
+}
+
+func (v *versionImpl) Get(option *util.ReadOption, key util.LookupKey) ([]byte, error) {
+  return nil, nil  
+}
+
+func (v *versionImpl) GetOverlappingInputs(level int, begin, end *util.InternalKey) []*FileMetaData {
+  return nil
+}
+
+func (v *versionImpl) OverlapInLevel(level int, smallest, largest []byte) bool {
+  return false
+}
+
+func (v *versionImpl) PickLevelForMemTableOutput(smallest, largest []byte) int {
+  return 0
+}
+
+func (v *versionImpl) NumFiles(level int) int {
+  return 0
+}
+
+func (v *versionImpl) ForEachOverlapping(userKey, internalKey []byte, handle Handler) {
+  
+}
+
+func (v *versionImpl) NewConcatingIterator(option *util.ReadOption, level int) mem.Iterator {
+  return nil
+}
+
+func (v *versionImpl) RecordReadSample(key []byte) bool {
+  return false
+}
+

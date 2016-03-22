@@ -5,7 +5,7 @@ import (
   "testing"
   "fmt"
   "sort"
-  "github.com/goleveldb/util"
+  "github.com/jellybean4/goleveldb/util"
 )
 
 func TestRand(t *testing.T) {

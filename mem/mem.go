@@ -1,6 +1,6 @@
 package mem
 
-import "github.com/goleveldb/util"
+import "github.com/jellybean4/goleveldb/util"
 
 type Iterator interface {
 

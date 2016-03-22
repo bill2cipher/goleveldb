@@ -1,19 +1,13 @@
 package util
 
-type Config interface {
-  L0_StopWritesTrigger() int
-}
-
-var Global config
-
-type config struct {
+type Config struct {
   kL0_StopWritesTrigger int
+  Max_Level int
 }
+
+var Global Config
 
 func init() {
   Global.kL0_StopWritesTrigger = 1024 * 1024 * 4
-}
-
-func (c config) L0_StopWritesTrigger() int {
-  return c.kL0_StopWritesTrigger
+  Global.Max_Level = 7
 }

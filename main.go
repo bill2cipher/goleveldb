@@ -47,4 +47,7 @@ func main() {
   store[2] = 12
   
   fmt.Printf("%v %v", buffer.Bytes(), store)
+  
+  a := []int{}
+  fmt.Printf("%d", len(a))
 }

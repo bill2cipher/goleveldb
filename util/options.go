@@ -1,7 +1,7 @@
 package util
 
 import (
-  "github.com/goleveldb/filter"
+  "github.com/jellybean4/goleveldb/filter"
 )
 
 func init() {

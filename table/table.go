@@ -9,11 +9,18 @@ import (
 )
 
 import (
-  "github.com/goleveldb/filter"
-  "github.com/goleveldb/util"
-  "github.com/goleveldb/mem"
+  "github.com/jellybean4/goleveldb/filter"
+  "github.com/jellybean4/goleveldb/util"
+  "github.com/jellybean4/goleveldb/mem"
 )
 
+type FileMetaData struct {
+  AllowSeek int
+  Number    int
+  FileSize  int
+  Smallest  util.InternalKey
+  Largest   util.InternalKey
+}
 
 // TableBuilder provides the interface used to build a Table
 // (an immutable and sorted map from keys to values).
@@ -274,7 +281,7 @@ type tableImpl struct {
   filter    filter.BlockReader
   file      *os.File
   filesize  int
-  option    util.Option
+  option    *util.Option
 }
 
 // Attempt to open the table that is stored in bytes [0..file_size)
@@ -289,7 +296,7 @@ type tableImpl struct {
 // for the duration of the returned table's lifetime.
 //
 // *file must remain live while this Table is in use.
-func OpenTable(filename string, filesize int, option util.Option) Table {
+func OpenTable(filename string, filesize int, option *util.Option) Table {
   table := new(tableImpl)
   if err := table.init(filename, filesize, option); err != nil {
     return nil
@@ -297,7 +304,7 @@ func OpenTable(filename string, filesize int, option util.Option) Table {
   return table
 }
 
-func (t *tableImpl) init(filename string, filesize int, option util.Option) error {
+func (t *tableImpl) init(filename string, filesize int, option *util.Option) error {
   if file, err := os.OpenFile(filename,os.O_RDONLY, 0); err != nil {
     return err
   } else {

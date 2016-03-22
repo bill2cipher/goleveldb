@@ -8,7 +8,7 @@ import (
 )
 
 import (
-  "github.com/goleveldb/util"
+  "github.com/jellybean4/goleveldb/util"
 )
 
 func TestTableBuild(t *testing.T) {
@@ -40,7 +40,7 @@ func TestTableBuild(t *testing.T) {
     t.Errorf("builder entries cnt wrong %d", builder.NumEntries())
   }
   
-  table := OpenTable(filename, builder.FileSize(), util.DefaultOption)
+  table := OpenTable(filename, builder.FileSize(), &util.DefaultOption)
   if table == nil {
     t.Errorf("open table %s failed", filename)
     return
@@ -142,7 +142,7 @@ func TestTableBuild(t *testing.T) {
   }
   builder.Finish()
   
-  table = OpenTable(filename, builder.FileSize(), util.DefaultOption)
+  table = OpenTable(filename, builder.FileSize(), &util.DefaultOption)
   if table == nil {
     t.Errorf("open table %s failed", filename)
     return
