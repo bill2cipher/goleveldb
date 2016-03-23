@@ -50,4 +50,7 @@ func main() {
   
   a := []int{}
   fmt.Printf("%d", len(a))
+  
+  var d interface{} = []int{1,2,3,4,5}
+  fmt.Printf("%v", d)
 }

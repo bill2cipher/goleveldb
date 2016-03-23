@@ -75,4 +75,5 @@ const (
   SeekType = iota
   ValueType 
   DeleteType
+  MaxType
 )

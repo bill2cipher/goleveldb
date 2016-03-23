@@ -96,7 +96,7 @@ func (c *cacheImpl) Get(option *util.ReadOption, num, fileSize int, key []byte) 
     return nil, nil
   }
   iter.Seek(key)
-  if iter.Valid() && util.BinaryCompare(iter.Key().([]byte), key) == 0 {
+  if iter.Valid() {
     return iter.Key().([]byte), iter.Value().([]byte)
   }
   return nil, nil

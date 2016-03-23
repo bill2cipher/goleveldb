@@ -9,6 +9,7 @@ import (
 
 import (
   "github.com/jellybean4/goleveldb/util"
+  "github.com/jellybean4/goleveldb/table"
 )
 
 
@@ -41,7 +42,7 @@ type VersionEdit interface {
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file 
   AddFile(level, file, file_size int, smallest, largest *util.InternalKey)
   
-  GetFile(level int) []*FileMetaData
+  GetFile(level int) []*table.FileMetaData
   
   // Delete the specified "file" from the specified "level"
   DeleteFile(level int, file int)
@@ -146,7 +147,7 @@ func (e *editImpl) GetCompactPointer(level int) []*util.InternalKey {
 }
 
 func (e *editImpl) AddFile(level, file, filesize int, smallest, largest *util.InternalKey) {
-  meta := &FileMetaData {
+  meta := &table.FileMetaData {
     AllowSeek : 0,
     Number    : file,
     FileSize  : filesize,
@@ -156,13 +157,13 @@ func (e *editImpl) AddFile(level, file, filesize int, smallest, largest *util.In
   e.files = append(e.files, &entry{level, meta})
 }
 
-func (e *editImpl) GetFile(level int) []*FileMetaData {
-  var rslt []*FileMetaData
+func (e *editImpl) GetFile(level int) []*table.FileMetaData {
+  var rslt []*table.FileMetaData
   for _, e := range e.files {
     if e.level != level {
       continue
     }
-    rslt = append(rslt, e.value.(*FileMetaData))
+    rslt = append(rslt, e.value.(*table.FileMetaData))
   }
   return rslt
 }
@@ -217,7 +218,7 @@ func (e *editImpl) Encode() []byte {
     binary.LittleEndian.PutUint32(store, uint32(e.files[i].level))
     buffer.Write(store[:4])
     
-    meta := e.files[i].value.(*FileMetaData)
+    meta := e.files[i].value.(*table.FileMetaData)
     binary.LittleEndian.PutUint32(store, uint32(meta.FileSize))
     buffer.Write(store[:4])
     
@@ -273,7 +274,7 @@ func (e *editImpl) Decode(data []byte) error {
 
       level := binary.LittleEndian.Uint32(data[1:])
       data = data[5:]
-      meta := new(FileMetaData)
+      meta := new(table.FileMetaData)
       meta.AllowSeek = 0
       meta.FileSize = int(binary.LittleEndian.Uint32(data))
       meta.Number = int(binary.LittleEndian.Uint32(data[4:]))

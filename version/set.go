@@ -4,6 +4,7 @@ import (
   "github.com/jellybean4/goleveldb/mem"
   "github.com/jellybean4/goleveldb/util"
   "github.com/jellybean4/goleveldb/compact"
+  "github.com/jellybean4/goleveldb/table"
 )
 
 // Manipulate a set of version
@@ -89,6 +90,10 @@ type VersionSet interface {
   // Return the name of db
   DBName() string
   
+  // Table cache of the db
+  TableCache() table.TableCache
+  
+  // options set with the db  
   Option() *util.Option
   
   GetRange()

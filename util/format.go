@@ -1,6 +1,7 @@
 package util
 
 import (
+  "sort"
   "bytes"
   "errors"
   "encoding/binary"
@@ -9,14 +10,14 @@ import (
 type LookupKey struct {
   key   []byte
   seq   uint64
-  rtype uint64
+  rtype byte
 }
 
 func NewLookupKey(key []byte, seq uint64, rtype byte) *LookupKey {
   lookup := new(LookupKey)
   lookup.key= key
   lookup.seq = seq
-  lookup.rtype = uint64(rtype) & 0xFF
+  lookup.rtype = rtype
   return lookup
 }
 
@@ -26,12 +27,21 @@ func (l *LookupKey) MemtableKey() []byte {
   for i := 0; i < len(l.key); i++ {
     buffer[4 + i] = l.key[i]
   }
-  binary.LittleEndian.PutUint64(buffer[4 + len(l.key):], l.seq << 8 | l.rtype)
+  binary.LittleEndian.PutUint64(buffer[4 + len(l.key):], PackSeqAndType(l.seq, l.rtype))
   return buffer
 }
 
 func (l *LookupKey) UserKey() []byte {
   return l.key
+}
+
+func (l *LookupKey) InternalKey() []byte {
+  store := make([]byte, len(l.key) + 8)
+  for i, b := range l.key {
+    store[i] = b
+  }
+  binary.LittleEndian.PutUint64(store[len(l.key):], PackSeqAndType(l.seq, l.rtype))
+  return store
 }
 
 type ParsedInternalKey struct {
@@ -139,3 +149,29 @@ func ExtractUserKey(ikey []byte) []byte {
   clen := len(ikey)
   return ikey[:clen - 8]
 }
+
+type Less func(f, s interface{}) bool
+type SliceSorter struct {
+  less Less
+  data []interface{}
+}
+
+func NewSliceSorter(data []interface{}, less Less) sort.Interface {
+  sorter := new(SliceSorter)
+  sorter.less = less
+  sorter.data = data
+  return sorter
+}
+
+func (s *SliceSorter) Len() int {
+  return len(s.data)
+}
+
+func (s *SliceSorter) Swap(i, j int) {
+  s.data[i], s.data[j] = s.data[j], s.data[i]
+}
+
+func (s *SliceSorter) Less(i, j int) bool {
+  return s.less(s.data[i], s.data[j])
+}
+

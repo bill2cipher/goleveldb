@@ -8,7 +8,7 @@ import (
 type twoLevelIterator struct {
   index  mem.Iterator
   next   NewIterator
-  option util.ReadOption
+  option *util.ReadOption
   data   mem.Iterator
   current interface{}
   cmp    util.Comparator
@@ -16,13 +16,13 @@ type twoLevelIterator struct {
 
 type NewIterator func(idx interface{}) mem.Iterator
 
-func NewTwoLevelIterator(index mem.Iterator, next NewIterator, option util.ReadOption, cmp util.Comparator) mem.Iterator {
+func NewTwoLevelIterator(index mem.Iterator, next NewIterator, option *util.ReadOption, cmp util.Comparator) mem.Iterator {
   iter := new(twoLevelIterator)
   iter.init(index, next, option, cmp)
   return iter
 }
 
-func (t *twoLevelIterator) init(index mem.Iterator, next NewIterator, option util.ReadOption, cmp util.Comparator) {
+func (t *twoLevelIterator) init(index mem.Iterator, next NewIterator, option *util.ReadOption, cmp util.Comparator) {
   t.index = index
   t.data  = nil
   t.next  = next

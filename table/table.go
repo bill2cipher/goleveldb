@@ -22,6 +22,7 @@ type FileMetaData struct {
   Largest   util.InternalKey
 }
 
+
 // TableBuilder provides the interface used to build a Table
 // (an immutable and sorted map from keys to values).
 //
@@ -438,7 +439,7 @@ func (t *tableImpl) readContent(offset, size int) ([]byte, error) {
 
 func (t *tableImpl) NewIterator() mem.Iterator {
   indexIter := t.index.NewIterator(t.option.Comparator)
-  return NewTwoLevelIterator(indexIter, t.NewBlockIterator, util.DefaultReadOption,
+  return NewTwoLevelIterator(indexIter, t.NewBlockIterator, &util.DefaultReadOption,
       util.BinaryComparator)
 }
 

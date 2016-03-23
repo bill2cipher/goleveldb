@@ -10,7 +10,7 @@ type InternalKeyComparator struct {
 }
 
 // NewInternalKeyComparator returns a new InternalKeyComparator
-func NewInternalKeyComparator(cmp util.Comparator) util.Comparator {
+func NewInternalKeyComparator(cmp util.Comparator) *InternalKeyComparator {
   icmp := new(InternalKeyComparator)
   icmp.cmp = cmp
   return icmp
@@ -38,6 +38,11 @@ func (i *InternalKeyComparator) Compare(a, b interface{}) int {
   default:
     return -1
   }
+}
+
+// UserComparator returns internal user comparator
+func (i *InternalKeyComparator) UserComparator() util.Comparator {
+  return i.cmp
 }
 
 // FindShortestSep finds shortest key within ikey1 and ikey2
