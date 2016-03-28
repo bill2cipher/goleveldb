@@ -7,6 +7,7 @@ import (
 
 import (
   "github.com/jellybean4/goleveldb/util"
+  "github.com/jellybean4/goleveldb/table"
 )
 
 func TestSimpleEdit(t *testing.T) {
@@ -30,21 +31,31 @@ func TestSimpleEdit(t *testing.T) {
     t.Errorf("edit decode fail %v", err)
   }
   
-  if edit2.GetComparatorName() != cmpName {
-    t.Errorf("cmp name not match %v", edit2.GetComparatorName())
+  if edit2.CmpName != cmpName {
+    t.Errorf("cmp name not match %v", edit2.CmpName)
   }
   
-  if edit2.GetLogNumber() != logNumber {
-    t.Errorf("log num not match %d", edit2.GetLogNumber())
+  if edit2.LogNumber != logNumber {
+    t.Errorf("log num not match %d", edit2.LogNumber)
   }
   
-  if edit2.GetNextFile() != nextFile {
-    t.Errorf("file num not match %d", edit2.GetNextFile())
+  if edit2.FileNumber != nextFile {
+    t.Errorf("file num not match %d", edit2.FileNumber)
   }
   
-  if edit2.GetLastSequence() != lastSeq {
-    t.Errorf("last seq not match %d", edit2.GetLastSequence())
+  if edit2.Sequence != lastSeq {
+    t.Errorf("last seq not match %d", edit2.Sequence)
   }
+}
+
+func getLevelEntry(level int, entries []*entry) []*entry {
+  rslt := []*entry{}
+  for _, e := range entries {
+    if e.level == level {
+      rslt = append(rslt, e)
+    }
+  }
+  return rslt
 }
 
 func TestFullEdit(t *testing.T) {
@@ -59,12 +70,12 @@ func TestFullEdit(t *testing.T) {
   edit.SetNextFile(nextFile)
   edit.SetLastSequence(lastSeq)
   
-  files := []FileMetaData{}
+  files := []table.FileMetaData{}
   for i := 0; i < 100; i++ {
     key := fmt.Sprintf("%s%d", "key", i)
     key2 := fmt.Sprintf("%s%d", "val", i)
     i2 := uint64(i)
-    meta := FileMetaData {
+    meta := table.FileMetaData {
       AllowSeek : 0,
       Number    : i,
       FileSize  : i * 100,
@@ -99,26 +110,26 @@ func TestFullEdit(t *testing.T) {
     t.Errorf("edit decode fail %v", err)
   }
   
-  if edit2.GetComparatorName() != cmpName {
-    t.Errorf("cmp name not match %v", edit2.GetComparatorName())
+  if edit2.CmpName != cmpName {
+    t.Errorf("cmp name not match %v", edit2.CmpName)
   }
   
-  if edit2.GetLogNumber() != logNumber {
-    t.Errorf("log num not match %d", edit2.GetLogNumber())
+  if edit2.LogNumber != logNumber {
+    t.Errorf("log num not match %d", edit2.LogNumber)
   }
   
-  if edit2.GetNextFile() != nextFile {
-    t.Errorf("file num not match %d", edit2.GetNextFile())
+  if edit2.FileNumber != nextFile {
+    t.Errorf("file num not match %d", edit2.FileNumber)
   }
   
-  if edit2.GetLastSequence() != lastSeq {
-    t.Errorf("last seq not match %d", edit2.GetLastSequence())
+  if edit2.Sequence != lastSeq {
+    t.Errorf("last seq not match %d", edit2.Sequence)
   }
   
   for i := 0; i < 100; i++ {
-    file := edit2.GetFile(i)
-    delete := edit2.GetDeletedFile(i)
-    pointer := edit2.GetCompactPointer(i)
+    file := getLevelEntry(i, edit2.Files)
+    delete := getLevelEntry(i, edit2.Deletes)
+    pointer := getLevelEntry(i, edit2.Pointers)
     
     if len(file) != 1 {
       t.Errorf("files len not one")
@@ -132,15 +143,15 @@ func TestFullEdit(t *testing.T) {
       t.Errorf("pointer len not one")
     }
     
-    if !ikCmp(pointer[0], pointers[i]) {
+    if !ikCmp(pointer[0].value.(*util.InternalKey), pointers[i]) {
       t.Errorf("pointer content not match")
     }
     
-    if !metaCmp(file[0], &files[i]) {
+    if !metaCmp(file[0].value.(*table.FileMetaData), &files[i]) {
       t.Errorf("file content not match")
     }
     
-    if delete[0] != deletes[i] {
+    if delete[0].value.(int) != deletes[i] {
       t.Errorf("delete not match %d %d", delete[0], deletes[i])
     }
   }
@@ -161,7 +172,7 @@ func ikCmp(i1, i2 *util.InternalKey) bool {
   return true
 }
 
-func metaCmp(f1, f2 *FileMetaData) bool {
+func metaCmp(f1, f2 *table.FileMetaData) bool {
   if f1.FileSize != f2.FileSize {
     return false
   }

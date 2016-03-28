@@ -72,8 +72,7 @@ type Memtable interface {
 }
 
 const (
-  SeekType = iota
-  ValueType 
+  ValueType = iota
   DeleteType
-  MaxType
+  SeekType
 )

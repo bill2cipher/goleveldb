@@ -7,28 +7,16 @@ type Comparator interface {
   
   // Return the shortest data between a and b
   FindShortestSep(a, b interface{}) interface{}
+  
+  // Name of this comparator
+  Name() string
 }
 
-type ComparatorWrapper struct {
-  cmp func(first, second interface{}) int
-}
-
-func NewComparator(cmp func(f, s interface{})int) Comparator {
-  comp := new(ComparatorWrapper)
-  comp.cmp = cmp
-  return comp
-}
-
-func (w *ComparatorWrapper) Compare(f, s interface{}) int {
-  return w.cmp(f, s)
-}
-
-func (w *ComparatorWrapper) FindShortestSep(f, s interface{}) interface{} {
-  return f
-}
+type Compare func(a, b interface{}) int
 
 // BinaryCompare is a function compare two bytes array
-func BinaryCompare(first, second []byte) int {
+func BinaryCompare(fval, sval interface{}) int {
+  first, second := fval.([]byte), sval.([]byte)
   var clen int
   if len(first) > len(second) {
     clen = len(second)
@@ -64,6 +52,10 @@ var BinaryComparator binaryCmp
 
 func (binary binaryCmp) Compare(a, b interface{}) int {
   return BinaryCompare(a.([]byte), b.([]byte))
+}
+
+func (binary binaryCmp) Name() string {
+  return "binary_comparator"
 }
 
 func (binary binaryCmp) FindShortestSep(val1, val2 interface{}) interface{} {

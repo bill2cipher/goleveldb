@@ -27,7 +27,7 @@ func TestTableBuild(t *testing.T) {
   sort.Strings(vals)
   
   
-  builder := NewTableBuilder(filename, util.DefaultOption)
+  builder := NewTableBuilder(filename, &util.DefaultOption)
   for i := 0; i < cnt; i++ {
     builder.Add([]byte(keys[i]), []byte(vals[i]))
     if builder.Status() != OK {
@@ -124,7 +124,7 @@ func TestTableBuild(t *testing.T) {
   }
 
   filename = "/tmp/test.dat2"
-  builder = NewTableBuilder(filename, util.DefaultOption)
+  builder = NewTableBuilder(filename, &util.DefaultOption)
   for i := 0; i < cnt; i++ {
     key := keys[i]
     val := vals[i]

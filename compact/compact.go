@@ -1,9 +1,24 @@
 package compact
 
-type Compaction interface {
-  // Start the background compaction routine
-  Start() error
-  
-  // Wait for imm or l0 compaction to be done
-  Wait4Compact()
+import (
+	"github.com/jellybean4/goleveldb/table"
+	"github.com/jellybean4/goleveldb/util"
+)
+
+type Compact struct {
+  Files  [][]*table.FileMetaData
+  Level  int
+  Smallest *util.InternalKey
+  Largest *util.InternalKey
+}
+
+func (c *Compact) init() {
+  c.Files = make([][]*table.FileMetaData, 2)
+}
+
+
+func NewCompact() *Compact {
+  comp := new(Compact)
+  comp.init()
+  return comp
 }

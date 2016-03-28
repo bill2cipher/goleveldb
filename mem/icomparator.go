@@ -40,6 +40,10 @@ func (i *InternalKeyComparator) Compare(a, b interface{}) int {
   }
 }
 
+func (i *InternalKeyComparator) Name() string {
+  return "internal_key_comparator"
+}
+
 // UserComparator returns internal user comparator
 func (i *InternalKeyComparator) UserComparator() util.Comparator {
   return i.cmp
@@ -83,4 +87,8 @@ func (m *MemtableKeyComparator) Compare(a, b interface{}) int {
 // FindShortestSep finds shortest key within ikey1 and ikey2
 func (m *MemtableKeyComparator) FindShortestSep(ikey1, ikey2 interface{}) interface{} {
   return ikey1
+}
+
+func (m *MemtableKeyComparator) Name() string {
+  return "memtable_key_comparator"
 }

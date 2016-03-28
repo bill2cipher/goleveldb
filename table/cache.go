@@ -60,7 +60,7 @@ func (c *cacheImpl) FindTable(num, fileSize int) Table {
     return table
   }
   
-  tableName := util.TableFileName(c.dbname, uint64(num))
+  tableName := util.TableFileName(c.dbname, num)
   table := OpenTable(tableName, fileSize, c.option)
   if table == nil {
     return nil

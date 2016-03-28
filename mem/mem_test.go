@@ -10,7 +10,7 @@ import (
 
 func TestRand(t *testing.T) {
   m := make(map[int]bool)
-  mem := NewMemtable(util.BinaryComparator)
+  mem := NewMemtable(NewInternalKeyComparator(util.BinaryComparator))
   for i := uint64(1); i < 50; i++ {
     data := rand.Int()
     key := []byte(fmt.Sprintf("key%d", data))
@@ -31,7 +31,7 @@ func TestRand(t *testing.T) {
   for _, i := range l {
     key := []byte(fmt.Sprintf("key%d", i))
     val := []byte(fmt.Sprintf("val%d", i))
-    sKey := *util.NewLookupKey(key, 0, SeekType)
+    sKey := *util.NewLookupKey(key, util.Global.MaxSeq, SeekType)
     if rslt := mem.Get(sKey); rslt == nil {
       t.Errorf("could not find rand key %v", string(key))
     } else if util.BinaryCompare(val, rslt) != 0 {
@@ -72,7 +72,7 @@ func TestRand(t *testing.T) {
 
 func TestMem(t *testing.T) {
   written := 0
-  mem := NewMemtable(util.BinaryComparator)
+  mem := NewMemtable(NewInternalKeyComparator(util.BinaryComparator))
   for i := uint64(1); i < 1000; i++ {
     key := []byte(fmt.Sprintf("key%d", i))
     val := []byte(fmt.Sprintf("val%d", i))
@@ -87,10 +87,10 @@ func TestMem(t *testing.T) {
   for i := uint64(1); i < 1000; i++ {
     key := []byte(fmt.Sprintf("key%d", i))
     val := []byte(fmt.Sprintf("val%d", i))
-    searchKey := *util.NewLookupKey(key, 0, SeekType)
+    searchKey := *util.NewLookupKey(key, util.Global.MaxSeq, SeekType)
 
     if rslt := mem.Get(searchKey); rslt == nil {
-      t.Errorf("could not find exist key %d", key)
+      t.Errorf("could not find exist key %s", key)
     } else if util.BinaryCompare(val, rslt) != 0 {
       t.Errorf("find exist key not match %v %v", val, rslt)
     }

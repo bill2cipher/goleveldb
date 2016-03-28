@@ -76,7 +76,7 @@ const (
 type tableBuilderImpl struct {
   blockBuilder BlockBuilder
   idxBuilder   BlockBuilder
-  option       util.Option
+  option       *util.Option
   file         *os.File
   metaindex    []entry
   filterBuilder filter.BlockBuilder
@@ -86,7 +86,7 @@ type tableBuilderImpl struct {
   lastKey      []byte
 }
 
-func NewTableBuilder(filename string, option util.Option) TableBuilder {
+func NewTableBuilder(filename string, option *util.Option) TableBuilder {
   builder := new(tableBuilderImpl)
   if builder.init(filename, option) != nil {
     return nil
@@ -94,7 +94,7 @@ func NewTableBuilder(filename string, option util.Option) TableBuilder {
   return builder
 }
 
-func (t *tableBuilderImpl) init(filename string, option util.Option) error {
+func (t *tableBuilderImpl) init(filename string, option *util.Option) error {
   if file, err := os.OpenFile(filename, os.O_TRUNC | os.O_WRONLY | os.O_CREATE, 0600); err != nil {
     return err
   } else {
@@ -440,7 +440,7 @@ func (t *tableImpl) readContent(offset, size int) ([]byte, error) {
 func (t *tableImpl) NewIterator() mem.Iterator {
   indexIter := t.index.NewIterator(t.option.Comparator)
   return NewTwoLevelIterator(indexIter, t.NewBlockIterator, &util.DefaultReadOption,
-      util.BinaryComparator)
+      util.BinaryCompare)
 }
 
 func (t *tableImpl) ApproximateOffsetOf(key []byte) int {

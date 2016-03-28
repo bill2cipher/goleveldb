@@ -21,21 +21,21 @@ const (
 // Return the name of the log file with the specified number
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".
-func LogFileName(dbname string, number uint64) string {
+func LogFileName(dbname string, number int) string {
   return fmt.Sprintf("%s/%06d.%s", dbname, number, "log")
 }
 
 // Return the name of the sstable with the specified number
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".
-func TableFileName(dbname string, number uint64) string {
+func TableFileName(dbname string, number int) string {
   return fmt.Sprintf("%s/%06d.%s", dbname, number, "ldb")
 }
 
 // Return the name of the descriptor file for the db named by
 // "dbname" and the specified incarnation number.  The result will be
 // prefixed with "dbname".
-func DescriptorFileName(dbname string, number uint64) string {
+func DescriptorFileName(dbname string, number int) string {
   return fmt.Sprintf("%s/MANIFEST-%06d", dbname, number)
 }
 
@@ -54,7 +54,7 @@ func LockFileName(dbname string) string {
 
 // Return the name of a temporary file owned by the db named "dbname".
 // The result will be prefixed with "dbname".
-func TempFileName(dbname string, number uint64) string {
+func TempFileName(dbname string, number int) string {
   return fmt.Sprintf("%s/%06d.%s", dbname, number, "dbtmp")
 }
 
@@ -102,13 +102,13 @@ func ParseFileName(filename string) (int, int) {
 }
 // Make the CURRENT file point to the descriptor file with the
 // specified number.
-func SetCurrentFile(dbname string, seq uint64) error {
+func SetCurrentFile(dbname string, num int) error {
   filename := CurrentFileName(dbname)
-  if file, err := os.OpenFile(filename, os.O_WRONLY | os.O_CREATE, 0660); err != nil {
+  if file, err := os.OpenFile(filename, os.O_TRUNC | os.O_WRONLY | os.O_CREATE, 0660); err != nil {
     return err
   } else {
-    desc := DescriptorFileName(dbname, seq)
-    file.WriteString(desc)
+    desc := DescriptorFileName(dbname, num)
+    file.WriteString(desc + "\n")
     file.Close()
   }
   return nil

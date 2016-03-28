@@ -12,7 +12,7 @@ import (
 )
 
 func PrintBatch(t *testing.T, batch WriteBatch) []byte {
-  cmp := util.NewInternalKeyComparator()
+  cmp := mem.NewInternalKeyComparator(util.BinaryComparator)
   table := mem.NewMemtable(cmp)
   if err := batch.InsertInto(table); err != nil {
     t.Errorf("batch iterate error %v", err)

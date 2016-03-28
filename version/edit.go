@@ -13,49 +13,18 @@ import (
 )
 
 
-type VersionEdit interface {
-  // clear all contents of this version edit
-  Clear()
-  
-  SetComparatorName(name string)
-  
-  GetComparatorName() string
-  
-  SetLogNumber(num int)
-  
-  GetLogNumber() int
-  
-  SetNextFile(num int)
-  
-  GetNextFile() int
-  
-  SetLastSequence(seq uint64)
-  
-  GetLastSequence() uint64
-  
-  SetCompactPointer(level int, key *util.InternalKey)
-  
-  GetCompactPointer(level int) []*util.InternalKey
-
-  // Add the specified file at the specified number.
-  // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
-  // REQUIRES: "smallest" and "largest" are smallest and largest keys in file 
-  AddFile(level, file, file_size int, smallest, largest *util.InternalKey)
-  
-  GetFile(level int) []*table.FileMetaData
-  
-  // Delete the specified "file" from the specified "level"
-  DeleteFile(level int, file int)
-  
-  GetDeletedFile(level int) []int
-  
-  Encode() []byte
-  
-  Decode(data []byte) error
+type VersionEdit struct {
+  LogNumber  int
+  FileNumber int
+  CmpName    string
+  Sequence   uint64
+  Files      []*entry
+  Pointers   []*entry
+  Deletes    []*entry
 }
 
-func NewVersionEdit() VersionEdit {
-  edit := new(editImpl)
+func NewVersionEdit() *VersionEdit {
+  edit := new(VersionEdit)
   edit.init()
   return edit
 }
@@ -75,78 +44,43 @@ const (
   typeDeletes
 )
 
-type editImpl struct {
-  logNumber  int
-  fileNumber int
-  cmpName    []byte
-  sequence   uint64
-  files      []*entry
-  pointers   []*entry
-  deletes    []*entry
-}
-
-func (e *editImpl) init() {
+func (e *VersionEdit) init() {
   e.Clear()
 }
 
-func (e *editImpl) Clear() {
-  e.logNumber = -1
-  e.fileNumber = -1
-  e.cmpName = nil
-  e.sequence = 0
-  e.files = []*entry{}
-  e.pointers = []*entry{}
-  e.deletes = []*entry{}
+func (e *VersionEdit) Clear() {
+  e.LogNumber = -1
+  e.FileNumber = -1
+  e.CmpName = ""
+  e.Sequence = 0
+  e.Files = []*entry{}
+  e.Pointers = []*entry{}
+  e.Deletes = []*entry{}
 }
 
-func (e *editImpl) SetComparatorName(name string) {
-  e.cmpName = []byte(name)
+func (e *VersionEdit) SetComparatorName(name string) {
+  e.CmpName = name
 }
 
-func (e *editImpl) GetComparatorName() string {
-  return string(e.cmpName)
+func (e *VersionEdit) SetLogNumber(num int) {
+  e.LogNumber = num
 }
 
-func (e *editImpl) SetLogNumber(num int) {
-  e.logNumber = num
+
+func (e *VersionEdit) SetNextFile(num int) {
+  e.FileNumber = num
 }
 
-func (e *editImpl) GetLogNumber() int {
-  return e.logNumber
+
+func (e *VersionEdit) SetLastSequence(seq uint64) {
+  e.Sequence = seq
 }
 
-func (e *editImpl) SetNextFile(num int) {
-  e.fileNumber = num
+func (e *VersionEdit) SetCompactPointer(level int, key *util.InternalKey) {
+  e.Pointers = append(e.Pointers, &entry{level, key})
 }
 
-func (e *editImpl) GetNextFile() int {
-  return e.fileNumber
-}
-
-func (e *editImpl) SetLastSequence(seq uint64) {
-  e.sequence = seq
-}
-
-func (e *editImpl) GetLastSequence() uint64 {
-  return e.sequence
-}
-
-func (e *editImpl) SetCompactPointer(level int, key *util.InternalKey) {
-  e.pointers = append(e.pointers, &entry{level, key})
-}
-
-func (e *editImpl) GetCompactPointer(level int) []*util.InternalKey {
-  var rslt []*util.InternalKey
-  for _, e := range e.pointers {
-    if e.level != level {
-      continue
-    }
-    rslt = append(rslt, e.value.(*util.InternalKey))
-  }
-  return rslt
-}
-
-func (e *editImpl) AddFile(level, file, filesize int, smallest, largest *util.InternalKey) {
+func (e *VersionEdit) AddFile(level, file, filesize int, smallest, largest *util.InternalKey) {
   meta := &table.FileMetaData {
     AllowSeek : 0,
     Number    : file,
@@ -154,71 +88,49 @@ func (e *editImpl) AddFile(level, file, filesize int, smallest, largest *util.In
     Smallest  : *smallest,
     Largest   : *largest,
   }
-  e.files = append(e.files, &entry{level, meta})
+  e.Files = append(e.Files, &entry{level, meta})
 }
 
-func (e *editImpl) GetFile(level int) []*table.FileMetaData {
-  var rslt []*table.FileMetaData
-  for _, e := range e.files {
-    if e.level != level {
-      continue
-    }
-    rslt = append(rslt, e.value.(*table.FileMetaData))
-  }
-  return rslt
-}
-
-func (e *editImpl) DeleteFile(level int, file int) {
+func (e *VersionEdit) DeleteFile(level int, file int) {
   entry := &entry {level, file}
-  e.deletes = append(e.deletes, entry)
+  e.Deletes = append(e.Deletes, entry)
 }
 
-func (e *editImpl) GetDeletedFile(level int) []int {
-  var rslt []int
-  for _, e := range e.deletes {
-    if e.level != level {
-      continue
-    }
-    rslt = append(rslt, e.value.(int))
-  }
-  return rslt
-}
-
-func (e *editImpl) Encode() []byte {
+func (e *VersionEdit) Encode() []byte {
   var buffer bytes.Buffer
   store := make([]byte, 8)
   
-  if e.logNumber != -1 {
-    binary.LittleEndian.PutUint32(store, uint32(e.logNumber))
+  if e.LogNumber != -1 {
+    binary.LittleEndian.PutUint32(store, uint32(e.LogNumber))
     buffer.WriteByte(typeLogNumber)
     buffer.Write(store[:4])
   }
   
-  if e.fileNumber != -1 {
-    binary.LittleEndian.PutUint32(store, uint32(e.fileNumber))
+  if e.FileNumber != -1 {
+    binary.LittleEndian.PutUint32(store, uint32(e.FileNumber))
     buffer.WriteByte(typeFileNumber)
     buffer.Write(store[:4])
   }
   
-  if e.cmpName != nil {
+  if e.CmpName != "" {
     buffer.WriteByte(typeCmpName)
-    util.PutLenPrefixBytes(&buffer, store, e.cmpName)
+    util.PutLenPrefixBytes(&buffer, store, []byte(e.CmpName))
   }
   
-  if e.sequence != 0 {
-    binary.LittleEndian.PutUint64(store, e.sequence)
+  if e.Sequence != 0 {
+    binary.LittleEndian.PutUint64(store, e.Sequence)
     buffer.WriteByte(typeSequence)
     buffer.Write(store)
   }
   
   // encode files
-  for i := 0; i < len(e.files); i++ {
+  for i := 0; i < len(e.Files); i++ {
     buffer.WriteByte(typeFiles)
     
-    binary.LittleEndian.PutUint32(store, uint32(e.files[i].level))
+    binary.LittleEndian.PutUint32(store, uint32(e.Files[i].level))
     buffer.Write(store[:4])
     
-    meta := e.files[i].value.(*table.FileMetaData)
+    meta := e.Files[i].value.(*table.FileMetaData)
     binary.LittleEndian.PutUint32(store, uint32(meta.FileSize))
     buffer.Write(store[:4])
     
@@ -230,45 +142,47 @@ func (e *editImpl) Encode() []byte {
   }
   
   // encode deleted file
-  for i := 0; i < len(e.deletes); i++ {
+  for i := 0; i < len(e.Deletes); i++ {
     buffer.WriteByte(typeDeletes)
-    binary.LittleEndian.PutUint32(store, uint32(e.deletes[i].level))
+    binary.LittleEndian.PutUint32(store, uint32(e.Deletes[i].level))
     buffer.Write(store[:4])
     
-    value := e.deletes[i].value.(int)
+    value := e.Deletes[i].value.(int)
     binary.LittleEndian.PutUint32(store, uint32(value))
     buffer.Write(store[:4])
   }
 
-  // encode pointers
-  for i := 0; i < len(e.pointers); i++ {
+  // encode Pointers
+  for i := 0; i < len(e.Pointers); i++ {
     buffer.WriteByte(typePointers)
-    binary.LittleEndian.PutUint32(store, uint32(e.pointers[i].level))
+    binary.LittleEndian.PutUint32(store, uint32(e.Pointers[i].level))
     buffer.Write(store[:4])
     
-    value := e.pointers[i].value.(*util.InternalKey)
+    value := e.Pointers[i].value.(*util.InternalKey)
     util.PutLenPrefixBytes(&buffer, store, value.Encode())
   }
   return buffer.Bytes()
 }
 
-func (e *editImpl) Decode(data []byte) error {
+func (e *VersionEdit) Decode(data []byte) error {
   var val []byte
   for len(data) > 0 {
     switch data[0] {
     case typeLogNumber:
-      e.logNumber = int(binary.LittleEndian.Uint32(data[1:]))
+      e.LogNumber = int(binary.LittleEndian.Uint32(data[1:]))
       data = data[5:]
     case typeFileNumber:
-      e.fileNumber = int(binary.LittleEndian.Uint32(data[1:]))
+      e.FileNumber = int(binary.LittleEndian.Uint32(data[1:]))
       data = data[5:]
     case typeCmpName:
-      e.cmpName, data = util.GetLenPrefixBytes(data[1:])
-      if e.cmpName == nil || data == nil {
+      var cmpName []byte
+      cmpName, data = util.GetLenPrefixBytes(data[1:])
+      if cmpName == nil || data == nil {
         return errors.New("bad cmp name")
       }
+      e.CmpName = string(cmpName)
     case typeSequence:
-      e.sequence = binary.LittleEndian.Uint64(data[1:])
+      e.Sequence = binary.LittleEndian.Uint64(data[1:])
       data = data[9:]
     case typeFiles:
 
@@ -291,22 +205,22 @@ func (e *editImpl) Decode(data []byte) error {
       }
       (&meta.Largest).Decode(val)
       
-      e.files = append(e.files, &entry{int(level), meta})
+    e.Files = append(e.Files, &entry{int(level), meta})
     case typeDeletes:
       level := binary.LittleEndian.Uint32(data[1:])
       num   := binary.LittleEndian.Uint32(data[5:])
-      e.deletes = append(e.deletes, &entry{int(level), int(num)})
+      e.Deletes = append(e.Deletes, &entry{int(level), int(num)})
       data = data[9:]
 
     case typePointers:
       level := binary.LittleEndian.Uint32(data[1:])
       val, data = util.GetLenPrefixBytes(data[5:])
       if val == nil || data == nil {
-        return errors.New("bad pointers key")
+        return errors.New("bad Pointers key")
       }
       intern := new(util.InternalKey)
       intern.Decode(val)
-      e.pointers = append(e.pointers, &entry{int(level), intern})
+      e.Pointers = append(e.Pointers, &entry{int(level), intern})
       
     default:
       msg := fmt.Sprintf("bad edit type %d", data[0])

@@ -150,15 +150,15 @@ func ExtractUserKey(ikey []byte) []byte {
   return ikey[:clen - 8]
 }
 
-type Less func(f, s interface{}) bool
+
 type SliceSorter struct {
-  less Less
+  less Compare
   data []interface{}
 }
 
-func NewSliceSorter(data []interface{}, less Less) sort.Interface {
+func NewSliceSorter(data []interface{}, cmp Compare) sort.Interface {
   sorter := new(SliceSorter)
-  sorter.less = less
+  sorter.less = cmp
   sorter.data = data
   return sorter
 }
@@ -172,6 +172,6 @@ func (s *SliceSorter) Swap(i, j int) {
 }
 
 func (s *SliceSorter) Less(i, j int) bool {
-  return s.less(s.data[i], s.data[j])
+  return s.less(s.data[i], s.data[j]) < 0
 }
 

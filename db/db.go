@@ -1,13 +1,18 @@
 package db
 
 import (
+  "os"
   "sync"
+  "sync/atomic"
+  "errors"
 )
 
 import (
   "github.com/jellybean4/goleveldb/util"
   "github.com/jellybean4/goleveldb/mem"
-  "github.com/jellybean4/goleveldb/compact"
+  "github.com/jellybean4/goleveldb/table"
+  "github.com/jellybean4/goleveldb/log"
+  "github.com/jellybean4/goleveldb/version"
 )
 
 type DB interface {
@@ -25,7 +30,7 @@ type DB interface {
   // Apply the specified updates to the database.
   // Returns OK on success, non-OK on failure.
   // Note: consider setting options.sync = true. 
-  Write(option *util.WriteOption, batch *WriteBatch) error
+  Write(option *util.WriteOption, batch WriteBatch) error
   
   // If the database contains an entry for "key" store the
   // corresponding value in *value and return OK.
@@ -95,25 +100,34 @@ type DB interface {
 // Stores NULL in *dbptr and returns a non-OK status on error.
 // Caller should delete *dbptr when it is no longer needed.
 func Open(option *util.Option, name string) DB {
-  return nil
+  db := new(dbImpl)
+  db.init(option, name)
+  return db
 }
 
 
 type dbImpl struct {
   mem     mem.Memtable
   imm     mem.Memtable
-  compact compact.Compact
   batches []*writer
   mutex   *sync.Mutex
-  signal  *sync.Cond
+  bg_cv   *sync.Cond
+  is_cmp  bool
   option  *util.Option
   name    string
+  wlog    log.Writer
+  vset    *version.VersionSet
+  status  int
+  shut    *atomic.Value
+  cache   table.TableCache
 }
 
 type writer struct {
   batch  WriteBatch
+  cv     *sync.Cond
   option *util.WriteOption
   state  int
+  err    error
 }
 
 const (
@@ -121,10 +135,36 @@ const (
   writer_UNDONE
 )
 
-func (db *dbImpl) init() {
+func (db *dbImpl) init(option *util.Option, name string) {
+  icmp := mem.NewInternalKeyComparator(option.Comparator)
+  option.Comparator = icmp
+
   db.batches = []*writer{}
   db.mutex  = new(sync.Mutex)
-  db.signal = sync.NewCond(db.mutex)
+  db.bg_cv = sync.NewCond(db.mutex)
+  db.status = 0
+  db.is_cmp = false
+  db.shut = new(atomic.Value)
+  db.shut.Store(false)
+  db.option = option
+  db.name = name
+  db.mem = mem.NewMemtable(icmp)
+  db.cache = table.NewTableCache(name, option, util.Global.TableCacheEntries)
+  db.vset = version.NewVersionSet(name, option, db.cache)
+  
+  if _, err := os.Stat(db.name); err != nil && os.IsNotExist(err) {
+    os.Mkdir(db.name, os.ModePerm)
+  } else if err != nil {
+    panic(err.Error())
+  }
+  
+  filenum := db.vset.NewFileNumber()
+  filename := util.LogFileName(name, filenum)
+  if wlog, err := log.NewWriter(filename); err != nil {
+    panic(err.Error())
+  } else {
+    db.wlog = wlog
+  }
 }
 
 func (db *dbImpl) Put(option *util.WriteOption, key, value []byte) error {
@@ -140,51 +180,251 @@ func (db *dbImpl) Delete(option *util.WriteOption, key []byte) error {
 }
 
 func (db *dbImpl) Write(option *util.WriteOption, batch WriteBatch) error {
-  w := &writer{batch, option, writer_UNDONE}
+  w := &writer{batch, sync.NewCond(db.mutex), option, writer_UNDONE, nil}
   db.mutex.Lock()
+  defer db.mutex.Unlock()
+
   db.batches = append(db.batches, w)
+  for w.state == writer_UNDONE && w != db.batches[0] {
+    w.cv.Wait()
+  }
+
+  if w.state == writer_DONE {
+    return w.err
+  }
   
-  for w.state == writer_UNDONE || w != db.batches[0] {
-    db.signal.Wait()
+  group := NewWriteBatch()
+  seq := db.vset.LastSequence()
+  handler := NewBatchHandler(db.mem, db.vset.LastSequence())
+
+  err := db.makeRoomForWrite(batch == nil)
+  var last *writer = w
+  if err != nil {
+    goto finish
+  }
+  
+  for _, later := range db.batches {
+    group.Append(later.batch)
+    last = later
   }
   db.mutex.Unlock()
   
-  if w.state == writer_DONE {
-    return nil
+  err = db.wlog.AddRecord(group.Contents())
+  if err != nil {
+    goto finish
+  }
+
+  batch.SetSequence(seq)
+  err = batch.Iterate(handler)
+  db.mutex.Lock()
+
+  db.vset.SetLastSequence(seq + uint64(batch.Count()))
+  
+
+finish:
+  var idx int
+  var later *writer
+  for idx, later = range db.batches {
+    if later == last {
+      break
+    }
+    later.state = writer_DONE
+    later.err = err
+    later.cv.Signal()
   }
   
-  
+  db.batches = db.batches[idx + 1:]
+  return w.err
+}
+
+func (db *dbImpl) CompactRange(begin, end []byte) error {
+  return nil
+}
+
+func (db *dbImpl) Get(option *util.ReadOption, key []byte) (error, []byte) {
+  return nil, nil
+}
+
+func (db *dbImpl) NewIterator(option *util.ReadOption) mem.Iterator {
+  return nil
+}
+
+func (db *dbImpl) GetSnapshot() Snapshot {
+  return nil
+}
+
+func (db *dbImpl) GetProperty(property []byte) (error, []byte) {
+  return nil, nil
+}
+
+func (db *dbImpl) GetApproximateSizes(trange []Range) []uint64 {
   return nil
 }
 
 // Make room for key/value pairs if there's too many data in the mem
-func (db *dbImpl) makeRoomForWrite(force bool) {
+func (db *dbImpl) makeRoomForWrite(force bool) error {
   for true {
+    if db.status == 1 {
+      return errors.New("db is in wrong status")
+    }
     // there's still room in the mem
     if !force && db.mem.ApproximateMemoryUsage() < db.option.BufferSize {
-      return
+      return nil
     }
     
     // there's no room in mem and imm is still under compaction
     if db.imm != nil {
-      db.compact.Wait4Compact()
+      db.bg_cv.Signal()
       continue
     }
     
     // there's too many level0 files
-    if db.compact.NumLevelFiles(0) > util.Global.L0_StopWritesTrigger() {
-      db.compact.Wait4Compact()
+    if db.vset.NumLevelFiles(0) > util.Global.L0StopWritesTrigger {
+      db.bg_cv.Signal()
       continue
     }
     
     // Attempt to switch to a new memtable and trigger compaction of old memtable
-    db.imm = db.mem
-    db.mem = mem.NewMemtable(db.option.Comparator)
-    filenum := db.version.NewFileNumber()
+    filenum := db.vset.NewFileNumber()
     filename := util.TableFileName(db.name, filenum)
-    logger := log.NewWriter(filename)
-    db.logger.Close()
-    db.logger = logger
-    ScheduleCompaction()
+    if logger, err := log.NewWriter(filename); err != nil {
+      db.vset.ReuseFileNumber(filenum)
+      return err
+    } else {
+      db.imm = db.mem
+      db.mem = mem.NewMemtable(db.option.Comparator)
+      db.wlog.Close()
+      db.wlog = logger
+      db.vset.SetLogNumber(filenum)
+      db.mayScheduleCompaction()
+    }
+    return nil
   }
+  return nil
+}
+
+func (db *dbImpl) mayScheduleCompaction() {
+  // under compaction already or db is about to shut down
+  if db.is_cmp || db.shut.Load().(bool) == true{
+    return
+  }
+  
+  // db under wrong status
+  if db.status != 0 {
+    return
+  }
+  
+  // db need no more compaction
+  if db.imm == nil && !db.vset.NeedsCompaction() {
+    return
+  }
+  go db.doCompaction()
+}
+
+func (db *dbImpl) doCompaction() {
+  db.mutex.Lock()
+  defer func() {
+    db.is_cmp = false
+    db.mutex.Unlock()
+    db.bg_cv.Broadcast()
+    db.mayScheduleCompaction()
+  }()
+
+  if db.imm != nil {
+    db.compactMemtable()
+    return
+  }
+  
+  if db.vset.NeedsCompaction() {
+    db.compactTableFiles()
+    return
+  }
+}
+
+func (db *dbImpl) compactMemtable() {
+  memtable := db.imm
+
+  iter := memtable.NewIterator()
+  if iter.SeekToFirst(); !iter.Valid() {
+    return
+  }
+  smallest := util.ExtractUserKey(iter.Key().([]byte))
+  
+  if iter.SeekToLast(); !iter.Valid() {
+    return
+  }
+  largest := util.ExtractUserKey(iter.Key().([]byte))
+
+  level := db.vset.Current().PickLevelForMemTableOutput(smallest, largest)
+  filenum := db.vset.NewFileNumber()
+  
+  edit := version.NewVersionEdit()
+  edit.SetLogNumber(db.vset.LogNumber())
+  
+  db.mutex.Unlock()
+  meta := db.writeLevel0File(level, filenum, memtable)
+  db.mutex.Lock()
+  
+  edit.AddFile(level, meta.Number, meta.FileSize, &meta.Smallest, &meta.Largest)
+  db.vset.LogAndApply(edit)
+  db.imm = nil
+}
+
+func (db *dbImpl) writeLevel0File(level, filenum int, imm mem.Memtable) *table.FileMetaData {
+  filename := util.TableFileName(db.name, filenum)
+  builder  := table.NewTableBuilder(filename, db.option)
+  iter := imm.NewIterator()
+  
+  iter.SeekToFirst() 
+  var large, small []byte
+  small = iter.Key().([]byte)
+  for iter.Valid() {
+    builder.Add(iter.Key().([]byte), iter.Value().([]byte))
+    large = iter.Key().([]byte)
+    iter.Next()
+  }
+  builder.Finish()
+  
+  ismall := new(util.InternalKey)
+  ismall.Decode(small)
+  
+  ilarge := new(util.InternalKey)
+  ilarge.Decode(large)
+  
+  meta := new(table.FileMetaData)
+  meta.FileSize = builder.FileSize()
+  meta.Number = filenum
+  meta.Largest = *ilarge
+  meta.Smallest = *ismall
+  meta.AllowSeek = 1
+  return meta 
+}
+
+func (db *dbImpl) compactTableFiles() error {
+  comp := db.vset.PickCompaction()
+  db.mutex.Unlock()
+  
+  
+  iter := db.vset.MakeInputIterator(comp)
+  builder := table.NewTableBuilder(db.name, db.option)
+  iter.SeekToFirst()
+
+  for iter.Valid() {
+    builder.Add(iter.Key().([]byte), iter.Value().([]byte))
+    iter.Next()
+  }
+  builder.FileSize()
+  
+  edit := version.NewVersionEdit()
+  for i := 0; i < len(comp.Files); i++ {
+    for _, meta := range comp.Files[i] {
+      edit.DeleteFile(comp.Level + i, meta.Number)
+    } 
+  }
+  
+  db.mutex.Lock()
+  filenum := db.vset.NewFileNumber()
+  edit.AddFile(comp.Level + 1, filenum, builder.FileSize(), comp.Smallest, comp.Largest)
+  db.vset.LogAndApply(edit)
+  return nil
 }

@@ -24,60 +24,83 @@ func FindTable(cmp util.Comparator, files []*table.FileMetaData, key []byte) *ta
   return files[left]
 }
 
-func CompareTableFile(f, s interface{}) bool {
+func TableFileCompare(f, s interface{}) int {
   fmeta := f.(*table.FileMetaData)
   smeta := s.(*table.FileMetaData)
-  return fmeta.Number < smeta.Number
+  if fmeta.Number < smeta.Number {
+    return -1
+  } else if fmeta.Number == smeta.Number {
+    return 0
+  } else {
+    return 1
+  }
 }
 
-func NewFilesIterator(data interface{}) mem.Iterator {
-  iter := new(sliceIterator)
-  iter.value = data.([])
+func NewFilesIterator(data []*table.FileMetaData) mem.Iterator {
+  iter := new(filesIterator)
+  iter.value = data
   iter.cur = -1
   return iter
 }
 
-type sliceIterator struct {
-  value []interface{}
+func TotalFileSize(files []*table.FileMetaData) int {
+  rslt := 0
+  for _, f := range files {
+    rslt += f.FileSize
+  }
+  return rslt
+}
+
+func MaxBytesForLevel(level int) float32 {
+  var rslt float32 = 10 * 1048576
+  for level > 1 {
+    rslt *= 10
+    level--
+  }
+  return rslt
+}
+
+type filesIterator struct {
+  value []*table.FileMetaData
   cur   int
 }
 
-func (s *sliceIterator) Valid() bool {
+func (s *filesIterator) Valid() bool {
   return s.cur >= 0 && s.cur < len(s.value)
 }
 
-func (s *sliceIterator) Key() interface{} {
+func (s *filesIterator) Key() interface{} {
   if !s.Valid() {
     return nil
   }
   return s.cur
 }
 
-func (s *sliceIterator) Value() interface{} {
+func (s *filesIterator) Value() interface{} {
   if !s.Valid() {
     return nil
   }
   return s.value[s.cur]
 }
 
-func (s *sliceIterator) Next() {
+func (s *filesIterator) Next() {
   s.cur++
 }
 
-func (s *sliceIterator) Prev() {
+func (s *filesIterator) Prev() {
   s.cur--
 }
 
-func (s *sliceIterator) Seek(key interface{}) {
+func (s *filesIterator) Seek(key interface{}) {
   vkey := key.(int)
   s.cur = vkey
 }
 
-func (s *sliceIterator) SeekToFirst() {
+func (s *filesIterator) SeekToFirst() {
   s.cur = 0
 }
 
-func (s *sliceIterator) SeekToLast() {
+func (s *filesIterator) SeekToLast() {
   slen := len(s.value)
   s.cur = slen - 1
 }

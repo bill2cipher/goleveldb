@@ -23,6 +23,14 @@ func (k Key) Compare(a, b interface{}) int {
   }
 }
 
+func (k Key) FindShortestSep(a, b interface{}) interface{} {
+  return a
+}
+
+func (k Key) Name() string {
+  return "tmp"
+}
+
 func TestIter(t *testing.T) {
   list := NewSkiplist(Key(0))
   var d Key = 10
