@@ -34,7 +34,7 @@ type Config struct {
 var Global Config
 
 func init() {
-  Global.L0StopWritesTrigger = 1024 * 1024 * 4
+  Global.L0StopWritesTrigger = 12
   Global.MaxLevel = 7
   Global.MaxSeq = 0x1 << 56 - 1
   Global.MaxMemCompactLevel = 2

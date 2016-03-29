@@ -229,3 +229,24 @@ func (e *VersionEdit) Decode(data []byte) error {
   }
   return nil
 }
+
+func (e *VersionEdit) dumpInfo() string {
+  var buffer bytes.Buffer
+  buffer.WriteString(fmt.Sprintf("dump version edit info\n"))
+  buffer.WriteString(fmt.Sprintf("log number : %d\n", e.LogNumber))
+  buffer.WriteString(fmt.Sprintf("file number: %d\n", e.FileNumber))
+  buffer.WriteString(fmt.Sprintf("seq : %d\n", e.Sequence))
+  
+  buffer.WriteString("added files\n")
+  for _, entry := range e.Files {
+    meta := entry.value.(*table.FileMetaData)
+    buffer.WriteString(fmt.Sprintf("{level : %d, file : %d}", entry.level, meta.Number))
+  }
+  buffer.WriteString("\n")
+  
+  buffer.WriteString("deleted files\n")
+  for _, entry := range e.Deletes {
+    buffer.WriteString(fmt.Sprintf("{level : %d, file : %d}", entry.level, entry.value.(int)))
+  }
+  return buffer.String()
+}

@@ -3,9 +3,14 @@ package version
 import (
   "os"
   "io"
+  "fmt"
+  "bytes"
   "bufio"
   "errors"
-  slog "log"
+)
+
+import (
+  "code.google.com/p/log4go"
 )
 
 import (
@@ -59,7 +64,7 @@ func (set *VersionSet) LogAndApply(edit *VersionEdit) error {
   
   set.setVersionEdit(edit)
   version := NewVersion(set)
-  builder := NewVersionBuilder(set.current)
+  builder := NewVersionBuilder(set.current, set.option.Comparator)
   builder.Apply(edit)
   builder.Finish(version)
   
@@ -79,6 +84,8 @@ func (set *VersionSet) LogAndApply(edit *VersionEdit) error {
     return err
   }
   util.SetCurrentFile(set.dbname, set.descNum)
+  log4go.Info("%s", edit.dumpInfo())
+  log4go.Info("%s", set.dumpCurrent())
   return nil
 }
 
@@ -99,7 +106,6 @@ func (set *VersionSet) Recover() error {
   if err := set.parseDescFile(string(descName)); err != nil {
     return err
   }
-  slog.Printf("verion set %v %v %v %v", set.descNum, set.fileNum, set.logNum, set.dbname)
   set.descNum = set.NewFileNumber()
   return nil
 }
@@ -195,19 +201,34 @@ func (set *VersionSet) PickCompaction() *compact.Compact {
    meta := set.current.files[comp.Level][0]
    if comp.Level == 0 {
      comp.Files[0] = set.current.GetOverlappingInputs(comp.Level, &meta.Smallest, &meta.Largest)
-     large, small := set.getRange(comp.Files[0])
+     small, large := set.getRange(comp.Files[0])
      comp.Files[1] = set.current.GetOverlappingInputs(comp.Level + 1, small, large)
    } else {
      comp.Files[0] = []*table.FileMetaData{meta}
      comp.Files[1] = set.current.GetOverlappingInputs(comp.Level + 1, &meta.Smallest, &meta.Largest)
    }
+   
+   var files []*table.FileMetaData
+   files = append(files, comp.Files[0]...)
+   files = append(files, comp.Files[1]...)
+   comp.Smallest, comp.Largest = set.getRange(files)
    return comp
 }
 
 // Return the maximum overlapping data (in bytes) at next level for any
 // file at a level >= 1.
 func (set *VersionSet) MaxNextLevelOverlappingBytes() int {
-  return 0
+  rslt := 0
+  for i := 1; i < util.Global.MaxLevel - 1; i++ {
+    for _, meta := range set.current.files[i] {
+      inputs := set.current.GetOverlappingInputs(i + 1, &meta.Smallest, &meta.Largest)
+      tmp := TotalFileSize(inputs)
+      if tmp > rslt {
+        rslt = tmp
+      }
+    } 
+  }
+  return rslt
 }
   
 // Create an iterator that reads over the compaction inputs for "*c".
@@ -245,7 +266,17 @@ func (set *VersionSet) NeedsCompaction() bool {
 // Get all files listed in any live version
 // May also mutate some internal state.
 func (set *VersionSet) GetLiveFiles() []int {
-  return nil
+  ver := set.current
+  rslt := []int{}
+  for ver != nil {
+    for i := 0; i < util.Global.MaxLevel; i++ {
+      for _, meta := range ver.files[i] {
+        rslt = append(rslt, meta.Number)
+      }
+    }
+    ver = ver.prev
+  }
+  return rslt
 }
 
 // Return the approximate offset in the database of the data for
@@ -310,7 +341,7 @@ func (set *VersionSet) parseDescFile(descName string) error {
   }
 
   edit := NewVersionEdit()
-  builder := NewVersionBuilder(set.current)
+  builder := NewVersionBuilder(set.current, set.option.Comparator)
 
   for true {
     if data, err := reader.Read(); err == io.EOF {
@@ -322,7 +353,6 @@ func (set *VersionSet) parseDescFile(descName string) error {
       return err
     } else {
       edit.Decode(data)
-      slog.Printf("decode edit %v", edit)
       if edit.LogNumber != -1 {
         set.logNum = edit.LogNumber
       }
@@ -349,18 +379,15 @@ func (set *VersionSet) getRange(files []*table.FileMetaData) (*util.InternalKey,
   icmp := set.option.Comparator
   for _, meta := range files {
     if small == nil {
-      small = &meta.Smallest
+      small, large = &meta.Smallest, &meta.Largest
+      continue
     }
     
-    if large == nil {
-      large = &meta.Largest
-    }
-    
-    if icmp.Compare(small, meta.Smallest) > 0 {
+    if icmp.Compare(small.Encode(), meta.Smallest.Encode()) > 0 {
       small = &meta.Smallest
     } 
     
-    if icmp.Compare(large, meta.Largest) < 0 {
+    if icmp.Compare(large.Encode(), meta.Largest.Encode()) < 0 {
       large = &meta.Largest
     }
   }
@@ -380,7 +407,6 @@ func (set *VersionSet) append(v *Version) {
   v.next = nil
   set.current = v 
 }
-
 
 func (set *VersionSet) writeSnapshot() error {
   edit := NewVersionEdit()
@@ -411,4 +437,24 @@ func (set *VersionSet) setVersionEdit(edit *VersionEdit) {
   if edit.FileNumber == -1 {
     edit.SetNextFile(set.fileNum)
   }
-} 
+}
+
+func (set *VersionSet) dumpCurrent() string {
+  var buffer bytes.Buffer
+  buffer.WriteString(fmt.Sprintf("Printing current version information\n"))
+  buffer.WriteString(fmt.Sprintf("LogNumber:\t%d\n", set.LogNumber()))
+  buffer.WriteString(fmt.Sprintf("FileNumber:\t%d\n", set.fileNum))
+  buffer.WriteString(fmt.Sprintf("Sequence:\t%d\n", set.LastSequence()))
+  buffer.WriteString(fmt.Sprintf("Desc:\t%d\n", set.descNum))
+  buffer.WriteString(fmt.Sprintf("Printing Files\n"))
+  for i := 0; i < util.Global.MaxLevel; i++ {
+    buffer.WriteString(fmt.Sprintf("#####Level %d####\n", i))
+    for _, meta := range set.current.files[i] {
+      msg := fmt.Sprintf("| %d %s %s |", meta.Number, meta.Smallest.UserKey(),
+        meta.Largest.UserKey())
+      buffer.WriteString(msg)
+    }
+    buffer.WriteString("\n")
+  }
+  return buffer.String()
+}

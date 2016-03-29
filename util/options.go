@@ -9,7 +9,7 @@ func init() {
   DefaultOption.BlockSize = 4096
   DefaultOption.Policy = filter.NewBloomPolicy(10)
   DefaultOption.Comparator = BinaryComparator
-  DefaultOption.BufferSize = 4096
+  DefaultOption.BufferSize = 1024 * 1024 * 4
 }
 
 type Option struct {

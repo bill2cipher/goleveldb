@@ -119,9 +119,8 @@ func (v *Version) GetOverlappingInputs(level int, begin, end *util.InternalKey) 
     return nil
   }
   rslt := []*table.FileMetaData{}
-  ucmp := v.vset.Option().Comparator.(*mem.InternalKeyComparator)
-  var ubegin []byte
-  var uend []byte
+  ucmp := v.vset.Option().Comparator.(*mem.InternalKeyComparator).UserComparator()
+  var ubegin, uend []byte
   if begin != nil {
     ubegin = begin.UserKey()
   } 
@@ -146,12 +145,13 @@ func (v *Version) GetOverlappingInputs(level int, begin, end *util.InternalKey) 
     
     if begin != nil && ucmp.Compare(ubegin, file.Smallest.UserKey()) > 0 {
       ubegin = file.Smallest.UserKey()
+      i = 0
     } 
     
     if end != nil && ucmp.Compare(uend, file.Largest.UserKey()) < 0 {
       uend = file.Largest.UserKey()
+      i = 0
     }
-    i = 0
   }
   
   return rslt
@@ -190,6 +190,10 @@ func (v *Version) PickLevelForMemTableOutput(smallest, largest []byte) int {
   
   for level + 1 < util.Global.MaxLevel {
     if v.OverlapInLevel(level + 1, smallest, largest) {
+      break
+    }
+    
+    if level >= util.Global.MaxMemCompactLevel {
       break
     }
     level++

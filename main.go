@@ -1,56 +1,16 @@
 package main
-
 import (
   "fmt"
-  "encoding/binary"
-  "hash/crc64"
-  "bytes"
+  "github.com/jellybean4/goleveldb/util"
 )
 
-func key(v uint64) uint64 {
-  return v >> 40
-}
-
-func gen(v uint64) uint64 {
-  return v >> 8 & 0xFFFFFFFF
-}
-
-func hash(v uint64) uint64 {
-  return v & 0xFF
-}
-
-func mkey(k, g uint64) uint64 {
-  return (k << 40 | g << 8) | (hashNumber(k, g) & 0xFF)
-}
-
-func hashNumber(k, g uint64) uint64 {
-  buffer := make([]byte, 16)
-  binary.LittleEndian.PutUint64(buffer, k)
-  binary.LittleEndian.PutUint64(buffer[8:], g)
-  table := crc64.MakeTable(crc64.ECMA)
-  h := crc64.New(table)
-  h.Write(buffer)
-  rslt := h.Sum64()
-  h.Reset()
-  return rslt
-}
-
 func main() {
-  var v uint64 = 1099511645686
-  k := key(v)
-  g := gen(v)
-  fmt.Printf("%d %d %d %d %d %d\n", v, k, g, hash(v), mkey(k, g), hashNumber(k, g) & 0xFF)
-  var buffer bytes.Buffer
-  buffer.Write([]byte{1,2,3,4,5,6,7})
+  s1 := []byte("key1000000")
+  l1 := []byte("key999999")
   
-  store := buffer.Bytes()
-  store[2] = 12
+  //s2 := []byte("key1110314")
+  //l2 := []byte("key1226823")
   
-  fmt.Printf("%v %v", buffer.Bytes(), store)
-  
-  a := []int{}
-  fmt.Printf("%d", len(a))
-  
-  var d interface{} = []int{1,2,3,4,5}
-  fmt.Printf("%v", d)
+  fmt.Printf("%d\n", util.BinaryCompare(s1, l1))
+  fmt.Printf("%d\n", util.BinaryCompare(l1, s1))
 }

@@ -8,6 +8,10 @@ import (
 )
 
 import (
+   "code.google.com/p/log4go"
+)
+
+import (
   "github.com/jellybean4/goleveldb/util"
   "github.com/jellybean4/goleveldb/mem"
   "github.com/jellybean4/goleveldb/table"
@@ -105,6 +109,10 @@ func Open(option *util.Option, name string) DB {
   return db
 }
 
+func init() {
+  config := os.Getenv("GOPATH") + "/res/log_config.xml"
+  log4go.LoadConfiguration(config)
+}
 
 type dbImpl struct {
   mem     mem.Memtable
@@ -154,13 +162,16 @@ func (db *dbImpl) init(option *util.Option, name string) {
   
   if _, err := os.Stat(db.name); err != nil && os.IsNotExist(err) {
     os.Mkdir(db.name, os.ModePerm)
+    log4go.Info("Making directory %s for new db", db.name)
   } else if err != nil {
+    log4go.Info("Stating db directory error %v", err)
     panic(err.Error())
   }
   
   filenum := db.vset.NewFileNumber()
   filename := util.LogFileName(name, filenum)
   if wlog, err := log.NewWriter(filename); err != nil {
+    log4go.Error("init log writer failed %s", err.Error())
     panic(err.Error())
   } else {
     db.wlog = wlog
@@ -200,6 +211,7 @@ func (db *dbImpl) Write(option *util.WriteOption, batch WriteBatch) error {
   err := db.makeRoomForWrite(batch == nil)
   var last *writer = w
   if err != nil {
+    log4go.Error("make room for write failed %v", err)
     goto finish
   }
   
@@ -211,15 +223,17 @@ func (db *dbImpl) Write(option *util.WriteOption, batch WriteBatch) error {
   
   err = db.wlog.AddRecord(group.Contents())
   if err != nil {
+    log4go.Error("add log record failed %v", err)
     goto finish
   }
 
   batch.SetSequence(seq)
   err = batch.Iterate(handler)
   db.mutex.Lock()
-
   db.vset.SetLastSequence(seq + uint64(batch.Count()))
-  
+  if err != nil {
+    log4go.Error("add k/v pairs into mem failed %v", err)
+  }
 
 finish:
   var idx int
@@ -274,28 +288,28 @@ func (db *dbImpl) makeRoomForWrite(force bool) error {
     
     // there's no room in mem and imm is still under compaction
     if db.imm != nil {
-      db.bg_cv.Signal()
+      db.bg_cv.Wait()
       continue
     }
     
     // there's too many level0 files
     if db.vset.NumLevelFiles(0) > util.Global.L0StopWritesTrigger {
-      db.bg_cv.Signal()
+      db.bg_cv.Wait()
       continue
     }
     
     // Attempt to switch to a new memtable and trigger compaction of old memtable
-    filenum := db.vset.NewFileNumber()
-    filename := util.TableFileName(db.name, filenum)
-    if logger, err := log.NewWriter(filename); err != nil {
-      db.vset.ReuseFileNumber(filenum)
+    lognum := db.vset.NewFileNumber()
+    logname := util.LogFileName(db.name, lognum)
+    if logger, err := log.NewWriter(logname); err != nil {
+      db.vset.ReuseFileNumber(lognum)
       return err
     } else {
       db.imm = db.mem
       db.mem = mem.NewMemtable(db.option.Comparator)
       db.wlog.Close()
       db.wlog = logger
-      db.vset.SetLogNumber(filenum)
+      db.vset.SetLogNumber(lognum)
       db.mayScheduleCompaction()
     }
     return nil
@@ -331,11 +345,13 @@ func (db *dbImpl) doCompaction() {
   }()
 
   if db.imm != nil {
+    db.is_cmp = true
     db.compactMemtable()
     return
   }
   
   if db.vset.NeedsCompaction() {
+    db.is_cmp = true
     db.compactTableFiles()
     return
   }
@@ -402,18 +418,21 @@ func (db *dbImpl) writeLevel0File(level, filenum int, imm mem.Memtable) *table.F
 
 func (db *dbImpl) compactTableFiles() error {
   comp := db.vset.PickCompaction()
+  if comp == nil {
+    return errors.New("pick new compaction failed")
+  }
+  
   db.mutex.Unlock()
-  
-  
   iter := db.vset.MakeInputIterator(comp)
-  builder := table.NewTableBuilder(db.name, db.option)
+  tableNum := db.vset.NewFileNumber()
+  tableName := util.TableFileName(db.name, tableNum)
+  builder := table.NewTableBuilder(tableName, db.option)
   iter.SeekToFirst()
-
+  log4go.Info("%s into %d with iter state %v", comp.Dump(), tableNum, iter.Valid())
   for iter.Valid() {
     builder.Add(iter.Key().([]byte), iter.Value().([]byte))
     iter.Next()
   }
-  builder.FileSize()
   
   edit := version.NewVersionEdit()
   for i := 0; i < len(comp.Files); i++ {
@@ -423,8 +442,7 @@ func (db *dbImpl) compactTableFiles() error {
   }
   
   db.mutex.Lock()
-  filenum := db.vset.NewFileNumber()
-  edit.AddFile(comp.Level + 1, filenum, builder.FileSize(), comp.Smallest, comp.Largest)
+  edit.AddFile(comp.Level + 1, tableNum, builder.FileSize(), comp.Smallest, comp.Largest)
   db.vset.LogAndApply(edit)
   return nil
 }

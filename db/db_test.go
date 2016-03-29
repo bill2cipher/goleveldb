@@ -11,7 +11,7 @@ import (
 
 func TestSimpleDB(t *testing.T) {
   db := Open(&util.DefaultOption, "/tmp/test")
-  cnt := 1000
+  cnt := 2000000
   for i := 0; i < cnt; i++ {
     key := fmt.Sprintf("key%d", i)
     val := fmt.Sprintf("val%d", i)

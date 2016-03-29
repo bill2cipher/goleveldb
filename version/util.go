@@ -11,7 +11,7 @@ func FindTable(cmp util.Comparator, files []*table.FileMetaData, key []byte) *ta
   for left < right {
     mid := (left + right) / 2
     meta := files[mid]
-    if rslt := cmp.Compare(key, meta.Largest); rslt > 0 {
+    if rslt := cmp.Compare(key, meta.Largest.Encode()); rslt > 0 {
       left = mid + 1
     } else {
       right = mid

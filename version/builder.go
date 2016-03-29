@@ -1,6 +1,10 @@
 package version
 
 import (
+  "sort"
+)
+
+import (
 	"github.com/jellybean4/goleveldb/table"
   "github.com/jellybean4/goleveldb/util"
 )
@@ -15,16 +19,18 @@ type Builder interface {
 }
 
 type builderImpl struct {
-  files   []map[int]*table.FileMetaData
+  files []map[int]*table.FileMetaData
+  cmp   util.Comparator
 }
 
-func NewVersionBuilder(base *Version) Builder {
+func NewVersionBuilder(base *Version, cmp util.Comparator) Builder {
   builder := new(builderImpl)
-  builder.init(base)
+  builder.init(base, cmp)
   return builder
 }
 
-func (b *builderImpl) init(base *Version) {
+func (b *builderImpl) init(base *Version, cmp util.Comparator) {
+  b.cmp = cmp
   b.files = make([]map[int]*table.FileMetaData, util.Global.MaxLevel)
   for i := 0; i < util.Global.MaxLevel; i++ {
     b.files[i] = make(map[int]*table.FileMetaData)
@@ -51,10 +57,28 @@ func (b *builderImpl) Apply(edit *VersionEdit) {
 
 func (b *builderImpl) Finish(v *Version) {
   v.files = make([][]*table.FileMetaData, util.Global.MaxLevel)
-  for i, files := range b.files {
-
-    for _, f := range files {
-      v.files[i] = append(v.files[i], f)
+  for i := 0; i < len(b.files); i++ {
+    tmp := make([]interface{}, len(b.files[i]))
+    cnt := 0
+    for _, meta := range b.files[i] {
+      tmp[cnt] = meta
+      cnt++
     }
+    sort.Sort(util.NewSliceSorter(tmp, b.metaCompare))
+    
+    for _, meta := range tmp {
+      v.files[i] = append(v.files[i], meta.(*table.FileMetaData))
+    }
+  }
+}
+
+
+func (b *builderImpl) metaCompare(first, second interface{}) int {
+  fmeta := first.(*table.FileMetaData)
+  smeta := second.(*table.FileMetaData)
+  if rslt := b.cmp.Compare(fmeta.Smallest.Encode(), smeta.Smallest.Encode()); rslt == 0 {
+    return smeta.Number - fmeta.Number
+  } else {
+    return rslt
   }
 }
