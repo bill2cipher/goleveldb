@@ -9,6 +9,10 @@ import (
 )
 
 import (
+	"code.google.com/p/log4go"
+)
+
+import (
   "github.com/jellybean4/goleveldb/filter"
   "github.com/jellybean4/goleveldb/util"
   "github.com/jellybean4/goleveldb/mem"
@@ -88,7 +92,8 @@ type tableBuilderImpl struct {
 
 func NewTableBuilder(filename string, option *util.Option) TableBuilder {
   builder := new(tableBuilderImpl)
-  if builder.init(filename, option) != nil {
+  if err := builder.init(filename, option); err != nil {
+    log4go.Error("create table builder %s failed: %s", filename, err.Error())
     return nil
   }
   return builder
@@ -303,6 +308,7 @@ type tableImpl struct {
 func OpenTable(filename string, filesize int, option *util.Option) Table {
   table := new(tableImpl)
   if err := table.init(filename, filesize, option); err != nil {
+    log4go.Error("could not open table %s %s", filename, err.Error())
     return nil
   }
   return table

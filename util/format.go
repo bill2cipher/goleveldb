@@ -93,6 +93,12 @@ func NewInternalKey(key []byte, seq uint64, rtype byte) *InternalKey {
   return internal
 }
 
+func DecodeInternalKey(content []byte) *InternalKey {
+  internal := new(InternalKey)
+  internal.content = content
+  return internal
+}
+
 func (i *InternalKey) Encode() []byte {
   return i.content
 }

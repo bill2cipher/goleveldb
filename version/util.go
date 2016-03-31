@@ -36,6 +36,10 @@ func TableFileCompare(f, s interface{}) int {
   }
 }
 
+func MaxFileSizeForLevel(level int) int {
+  return util.Global.TargetFileSize
+}
+
 func NewFilesIterator(data []*table.FileMetaData) mem.Iterator {
   iter := new(filesIterator)
   iter.value = data

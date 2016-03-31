@@ -18,10 +18,8 @@ func NewInternalKeyComparator(cmp util.Comparator) *InternalKeyComparator {
 
 // Compare returns compare rslt of a and b
 func (i *InternalKeyComparator) Compare(a, b interface{}) int {
-  val1 := a.([]byte)
-  val2 := b.([]byte)
-  split1 := len(val1) - 8
-  split2 := len(val2) - 8
+  val1, val2 := a.([]byte), b.([]byte)
+  split1, split2 := len(val1) - 8, len(val2) - 8
   cmp := i.cmp.Compare(val1[:split1], val2[:split2])
   if cmp != 0 {
     return cmp

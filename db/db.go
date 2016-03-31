@@ -103,7 +103,7 @@ type DB interface {
 // OK on success.
 // Stores NULL in *dbptr and returns a non-OK status on error.
 // Caller should delete *dbptr when it is no longer needed.
-func Open(option *util.Option, name string) DB {
+func Open(option *util.Option, name string) *dbImpl {
   db := new(dbImpl)
   db.init(option, name)
   return db
@@ -319,7 +319,7 @@ func (db *dbImpl) makeRoomForWrite(force bool) error {
 
 func (db *dbImpl) mayScheduleCompaction() {
   // under compaction already or db is about to shut down
-  if db.is_cmp || db.shut.Load().(bool) == true{
+  if db.is_cmp || db.shut.Load().(bool) {
     return
   }
   
@@ -421,20 +421,45 @@ func (db *dbImpl) compactTableFiles() error {
   if comp == nil {
     return errors.New("pick new compaction failed")
   }
-  
   db.mutex.Unlock()
+
   iter := db.vset.MakeInputIterator(comp)
-  tableNum := db.vset.NewFileNumber()
-  tableName := util.TableFileName(db.name, tableNum)
-  builder := table.NewTableBuilder(tableName, db.option)
   iter.SeekToFirst()
-  log4go.Info("%s into %d with iter state %v", comp.Dump(), tableNum, iter.Valid())
+  var builder table.TableBuilder = nil
+  var tableNum int = 0
+  var smallest, largest []byte
+  edit := version.NewVersionEdit()
+  
   for iter.Valid() {
+    if db.imm != nil {
+      db.mutex.Lock()
+      db.compactMemtable()
+      db.bg_cv.Broadcast()
+      db.mutex.Unlock()
+    }
+    
+    if builder == nil {
+      builder, tableNum = db.openCompactionOutputFile()
+      smallest = iter.Key().([]byte)
+    }
+    largest = iter.Key().([]byte)
     builder.Add(iter.Key().([]byte), iter.Value().([]byte))
+    if builder.FileSize() > version.MaxFileSizeForLevel(comp.Level + 1) {
+      builder.Finish()
+      
+      edit.AddFile(comp.Level + 1, tableNum, builder.FileSize(),
+        util.DecodeInternalKey(smallest), util.DecodeInternalKey(largest))
+      builder = nil
+    }
     iter.Next()
   }
   
-  edit := version.NewVersionEdit()
+  if builder != nil {
+    builder.Finish()
+    edit.AddFile(comp.Level + 1, tableNum, builder.FileSize(),
+      util.DecodeInternalKey(smallest), util.DecodeInternalKey(largest))
+  }
+
   for i := 0; i < len(comp.Files); i++ {
     for _, meta := range comp.Files[i] {
       edit.DeleteFile(comp.Level + i, meta.Number)
@@ -442,7 +467,17 @@ func (db *dbImpl) compactTableFiles() error {
   }
   
   db.mutex.Lock()
-  edit.AddFile(comp.Level + 1, tableNum, builder.FileSize(), comp.Smallest, comp.Largest)
   db.vset.LogAndApply(edit)
   return nil
+}
+
+
+func (db *dbImpl) openCompactionOutputFile() (table.TableBuilder, int) {
+  db.mutex.Lock()
+  num  := db.vset.NewFileNumber()
+  db.mutex.Unlock()
+
+  name := util.TableFileName(db.name, num)
+  builder := table.NewTableBuilder(name, db.option) 
+  return builder, num
 }

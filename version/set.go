@@ -448,7 +448,9 @@ func (set *VersionSet) dumpCurrent() string {
   buffer.WriteString(fmt.Sprintf("Desc:\t%d\n", set.descNum))
   buffer.WriteString(fmt.Sprintf("Printing Files\n"))
   for i := 0; i < util.Global.MaxLevel; i++ {
-    buffer.WriteString(fmt.Sprintf("#####Level %d####\n", i))
+    limit := MaxBytesForLevel(i)
+    size  := TotalFileSize(set.current.files[i])
+    buffer.WriteString(fmt.Sprintf("#####Level %d  : %d/%v ####\n", i, size, limit))
     for _, meta := range set.current.files[i] {
       msg := fmt.Sprintf("| %d %s %s |", meta.Number, meta.Smallest.UserKey(),
         meta.Largest.UserKey())

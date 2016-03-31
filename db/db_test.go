@@ -11,13 +11,17 @@ import (
 
 func TestSimpleDB(t *testing.T) {
   db := Open(&util.DefaultOption, "/tmp/test")
-  cnt := 2000000
+  cnt := 9000000
   for i := 0; i < cnt; i++ {
     key := fmt.Sprintf("key%d", i)
     val := fmt.Sprintf("val%d", i)
     if err := db.Put(&util.DefaultWriteOption, []byte(key), []byte(val)); err != nil {
       t.Errorf("put k/v error %v", err)
     }
+  }
+  
+  for db.is_cmp {
+    db.bg_cv.Wait()
   }
 }
 

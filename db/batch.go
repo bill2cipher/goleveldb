@@ -153,24 +153,19 @@ func (b *batchImpl) Iterate(handler BatchHandler) error {
     return errors.New("batch size too small")
   }
   
+  var key, val []byte
   content = content[BatchHeader : ]
   cnt := 0
   for len(content) > 0 {
     if content[0] == mem.ValueType {
-      content = content[1:]
-      key, _ := util.GetLenPrefixBytes(content)
-      content = content[len(key) + 4:]
-      val, _ := util.GetLenPrefixBytes(content)
-      content = content[len(val) + 4:]
-      
+      key, content = util.GetLenPrefixBytes(content[1:])
+      val, content = util.GetLenPrefixBytes(content)
       if key == nil || val == nil {
         return errors.New("bad patch put")
       }
       handler.Put(key, val)
     } else if content[0] == mem.DeleteType {
-      content = content[1:]
-      key, _ := util.GetLenPrefixBytes(content)
-      content = content[len(key) + 4:]
+      key, content = util.GetLenPrefixBytes(content[1:])
       
       if key == nil {
         return errors.New("bad batch del")
